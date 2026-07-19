@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Taamify — Cantillation Tutor</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>Taamify</h1>
+    <span class="tagline">Deep learning tutor for Torah cantillation</span>
+  </div>
+  <div class="model-info" id="model-info">loading model…</div>
+</header>
+
+<nav>
+  <button class="tab active" data-tab="practice">Practice</button>
+  <button class="tab" data-tab="analyze">Analyze Recording</button>
+  <button class="tab" data-tab="about">About</button>
+</nav>
+
+<main>
+
+<!-- ══════════════════════ Practice ══════════════════════ -->
+<section id="practice" class="panel active">
+  <div class="card">
+    <h2>Practice a cantillation mark</h2>
+    <p class="muted">Choose a mark, listen to the teacher singing a real word from
+    the Torah, then record yourself singing the same word. You receive a combined
+    score: the network's confidence that you sang the target mark, plus a
+    pitch-curve comparison against the teacher.</p>
+
+    <div class="row">
+      <label for="taam-select">Cantillation mark</label>
+      <select id="taam-select"></select>
+    </div>
+    <div class="row">
+      <label for="word-select">Practice word</label>
+      <select id="word-select"></select>
+    </div>
+
+    <div class="teacher-box">
+      <div>
+        <div class="hebrew-word" id="teacher-word"></div>
+        <div class="muted" id="teacher-ref"></div>
+        <audio id="teacher-audio" controls></audio>
+      </div>
+      <canvas id="curve-canvas" width="620" height="240"></canvas>
+    </div>
+
+    <div class="controls">
+      <button id="record-btn" class="primary">Record my attempt</button>
+      <span id="record-status" class="muted"></span>
+    </div>
+
+    <div id="practice-result" class="result hidden">
+      <div class="score-grid">
+        <div class="metric"><div class="metric-value" id="score-combined">–</div>
+          <div class="metric-label">Combined score</div></div>
+        <div class="metric"><div class="metric-value" id="score-cnn">–</div>
+          <div class="metric-label">Network verdict</div></div>
+        <div class="metric"><div class="metric-value" id="score-dtw">–</div>
+          <div class="metric-label">Melodic match (experimental)</div></div>
+      </div>
+      <div id="verdict" class="verdict"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════ Analyze ══════════════════════ -->
+<section id="analyze" class="panel">
+  <div class="card">
+    <h2>Analyze a recording</h2>
+    <p class="muted">Upload a recording of Torah reading (WAV). The system
+    transcribes it word by word and classifies the cantillation mark of each
+    word with the trained network. The first analysis downloads the
+    transcription model and may take a minute.</p>
+    <div class="controls">
+      <input type="file" id="analyze-file" accept=".wav,audio/wav">
+      <button id="analyze-btn" class="primary">Analyze</button>
+      <span id="analyze-status" class="muted"></span>
+    </div>
+    <table id="analyze-table" class="hidden">
+      <thead><tr><th>#</th><th>Word</th><th>Time</th><th>Prediction</th>
+        <th>Confidence</th><th>Alternatives</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════ About ══════════════════════ -->
+<section id="about" class="panel">
+  <div class="card">
+    <h2>About</h2>
+    <p>Taamify classifies Torah cantillation marks (taamei hamikra) from audio.
+    The production model is a five-block convolutional network trained on
+    64,517 verified word spectrograms from five readers, selected because it
+    generalizes best to voices never heard in training (Leave-One-Reader-Out:
+    53% mean accuracy over four held-out readers, against a 9.1% chance
+    baseline).</p>
+    <p>Labels were obtained by aligning Whisper transcriptions against the
+    cantillated canonical text of the Sefaria API with exact-match,
+    precision-first cleaning. Details, code and the full report are in the
+    project repository.</p>
+    <p class="muted">Deep Learning course project, 2026 — Meir Ben Zion Dvir.</p>
+  </div>
+</section>
+
+</main>
+<script src="app.js"></script>
+</body>
+</html>

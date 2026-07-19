@@ -1,0 +1,37 @@
+# Taamify — Python 3.13 on Apple Silicon (venv313)
+# Core ML
+torch
+torchvision
+scikit-learn
+numpy
+scipy
+
+# Audio
+librosa
+soundfile
+
+# Transcription (Apple Silicon GPU via MLX; faster-whisper as CPU fallback)
+mlx-whisper
+faster-whisper
+
+# Data / API
+requests
+
+# Visualization & analysis
+matplotlib
+seaborn
+umap-learn
+
+# Demo app
+streamlit
+sounddevice          # microphone capture (app)
+truststore           # TLS through inspecting proxies (HF downloads)
+
+# Deliverable tooling (optional)
+python-pptx          # presentation builder
+pillow
+
+# Web application
+fastapi
+uvicorn
+python-multipart

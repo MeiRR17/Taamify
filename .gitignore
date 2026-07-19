@@ -1,0 +1,69 @@
+# Audio files
+data/**/*.wav
+data/**/*.mp3
+data/**/*.flac
+
+# Transcription files
+data/**/*.vtt
+
+# Large dataset files (spectrograms)
+**/*.npy
+Data_Prep/dataset/
+Data_Prep/dataset_full/
+Data_Prep/dataset_test/
+
+# Model files (heavy)
+*.pth
+*.h5
+*.pkl
+
+# Large JSON data files
+Data_Prep/aligned_dataset.json
+X_data_*.npy
+y_labels_*.npy
+
+# Whisper models (very large) — wherever they live
+**/whisper_models/
+*.bin
+
+# Virtual environments
+venv/
+venv*/
+
+# Prepared training data (regenerable, binary)
+*.npz
+prepared_data/
+# ...except the small Colab sample bundled with the repo
+!sample_data/*.npz
+
+# Sefaria API cache (regenerable)
+Data_Prep/sefaria_cache/
+
+# Local machine settings
+.claude/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+
+# Hebrew docs (git encoding issues)
+*.gdoc
