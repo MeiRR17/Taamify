@@ -47,6 +47,9 @@ def main():
     ap.add_argument('--num-classes', type=int, default=11)
     ap.add_argument('--epochs', type=int, default=50)
     ap.add_argument('--batch-size', type=int, default=64)
+    ap.add_argument('--max-train', type=int, default=None,
+                    help='cap every fold to the same training size, so a fold '
+                         'that holds out a large reader is not also starved')
     ap.add_argument('--skip-prep', action='store_true',
                     help='reuse existing prepared_data/loro_* folders')
     ap.add_argument('--keep-folds', action='store_true',
@@ -61,13 +64,18 @@ def main():
 
     for holdout in args.holdouts:
         scenario = f"loro_{holdout}_top{args.num_classes}"
+        if args.max_train:
+            scenario += f"_cap{args.max_train}"
         data_dir = PROJECT_DIR / 'prepared_data' / scenario
 
         if not args.skip_prep or not data_dir.exists():
-            run([PYTHON, '00_validate_and_prepare_data.py',
-                 '--readers', *args.readers,
-                 '--num-classes', str(args.num_classes),
-                 '--split', 'loro', '--holdout', holdout])
+            cmd = [PYTHON, '00_validate_and_prepare_data.py',
+                   '--readers', *args.readers,
+                   '--num-classes', str(args.num_classes),
+                   '--split', 'loro', '--holdout', holdout]
+            if args.max_train:
+                cmd += ['--max-train', str(args.max_train)]
+            run(cmd)
 
         # Train from a LOCAL copy: reading fold npz straight from the Drive-synced
         # folder races with sync and intermittently kills the child (seen in

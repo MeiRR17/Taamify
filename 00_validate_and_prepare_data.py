@@ -132,7 +132,8 @@ def make_random_splits(X, y, test_size, val_size, seed=42):
     return X_train, y_train, X_val, y_val, X_test, y_test
 
 
-def make_loro_splits(X, y, reader_ids, holdout, val_size=0.15, seed=42):
+def make_loro_splits(X, y, reader_ids, holdout, val_size=0.15, seed=42,
+                     max_train=None):
     test_mask = reader_ids == holdout
     if not test_mask.any():
         raise SystemExit(f"holdout reader {holdout} has no samples")
@@ -140,6 +141,18 @@ def make_loro_splits(X, y, reader_ids, holdout, val_size=0.15, seed=42):
     X_rest, y_rest = X[~test_mask], y[~test_mask]
     X_train, X_val, y_train, y_val = train_test_split(
         X_rest, y_rest, test_size=val_size, random_state=seed, stratify=y_rest)
+
+    # The folds are not comparable out of the box: holding out the largest
+    # reader leaves far less training data than holding out a small one, so a
+    # weak fold could be starved rather than out-of-domain. --max-train caps
+    # every fold to the same training size, stratified so the class balance is
+    # untouched, which separates the two explanations.
+    if max_train and max_train < len(X_train):
+        keep, _ = train_test_split(np.arange(len(X_train)), train_size=max_train,
+                                   random_state=seed, stratify=y_train)
+        X_train, y_train = X_train[keep], y_train[keep]
+        print(f"  capped training set to {max_train:,} samples (stratified)")
+
     train_readers = sorted(set(reader_ids[~test_mask]))
     print(f"\nLORO: train/val on {train_readers}, test on held-out {holdout}")
     return X_train, y_train, X_val, y_val, X_test, y_test
@@ -209,6 +222,9 @@ def main():
     parser.add_argument('--holdout', default=None, help='reader to hold out (loro)')
     parser.add_argument('--test-size', type=float, default=0.15)
     parser.add_argument('--val-size', type=float, default=0.15)
+    parser.add_argument('--max-train', type=int, default=None,
+                        help='cap the training set (loro), so folds with very '
+                             'different training sizes can be compared')
     args = parser.parse_args()
 
     if args.split == 'loro' and not args.holdout:
@@ -232,8 +248,11 @@ def main():
         splits = make_random_splits(X, y, args.test_size, args.val_size)
         scenario = f"random_top{len(class_names)}"
     else:
-        splits = make_loro_splits(X, y, reader_ids, args.holdout, args.val_size)
+        splits = make_loro_splits(X, y, reader_ids, args.holdout, args.val_size,
+                                  max_train=args.max_train)
         scenario = f"loro_{args.holdout}_top{len(class_names)}"
+        if args.max_train:
+            scenario += f"_cap{args.max_train}"
 
     X_train, y_train, X_val, y_val, X_test, y_test = splits
     print(f"\nSplit: train {len(X_train)}, val {len(X_val)}, test {len(X_test)}")

@@ -54,14 +54,23 @@ PROJECT_DIR = Path(__file__).parent
 DEFAULT_DATA_DIR = PROJECT_DIR / "prepared_data" / "random_top11"
 RESULTS_ROOT = PROJECT_DIR / "results"
 
-# Set seeds (torch.manual_seed also seeds MPS)
-SEED = 42
-np.random.seed(SEED)
-torch.manual_seed(SEED)
-if torch.cuda.is_available():
-    torch.cuda.manual_seed_all(SEED)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+# Set seeds (torch.manual_seed also seeds MPS). TAAMIFY_SEED overrides, so a
+# result can be repeated under several initializations: every headline number in
+# results/v3_comparison came from a single seed, which is a point estimate
+# masquerading as a measurement.
+SEED = int(os.environ.get("TAAMIFY_SEED", "42"))
+
+
+def set_seeds(seed: int = SEED):
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+
+set_seeds(SEED)
 
 
 def pick_device() -> torch.device:
