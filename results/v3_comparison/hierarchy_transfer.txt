@@ -1,0 +1,33 @@
+
+fold  tradition                    n     acc   errors  within-rank   chance     lift            95% CI
+--------------------------------------------------------------------------------------------------------
+R1    Sephardic-Jerusalem     25,092   0.472   13,255       38.0%    21.8%   +16.2%  [+0.156, +0.169]
+R6    Ashkenazi               62,170   0.153   52,649       30.3%    21.9%    +8.4%  [+0.081, +0.087]
+--------------------------------------------------------------------------------------------------------
+within-rank = share of the model's mistakes that land on a ta'am of the
+same traditional rank. chance respects the model's own prediction mix, so
+over-predicting a crowded rank cannot fake it. lift = observed - chance;
+a CI excluding zero means the hierarchy is showing through the errors.
+
+within-tradition folds : accuracy 0.472, rank lift +16.2%
+cross-tradition fold   : accuracy 0.153, rank lift +8.4%
+
+accuracy retained across traditions: 32%
+rank structure retained          : 52%
+
+If the rank lift survives far better than the accuracy does, the
+melody is what fails to transfer, not the structure it encodes.
+
+cross-tradition fold (R6) — where the errors land, by true rank:
+true rank      errors   same rank    share   chance     lift
+--------------------------------------------------------------
+Emperor         8,215       1,557    19.0%    11.2%    +7.7%
+King           19,628       1,894     9.6%     4.9%    +4.7%
+Duke            6,467         535     8.3%     5.9%    +2.4%
+Servant        18,339      11,990    65.4%    50.5%   +14.8%
+--------------------------------------------------------------
+A rank whose lift is near zero contributes nothing to the aggregate
+effect, however large its raw share looks: a crowded rank catches
+stray predictions by size alone.
+
+wrote results/v3_comparison/hierarchy_transfer_cap40000.json

@@ -1,0 +1,14 @@
+
+fold  tradition               rank gap   perm p   pairs w/b  sil(rank)  sil(ta_am)
+------------------------------------------------------------------------------------
+R1    Sephardic-Jerusalem      +0.0700   0.0253       11/44      0.090      -0.018
+R6    Ashkenazi                +0.0414   0.0050       11/44     -0.012      -0.092
+------------------------------------------------------------------------------------
+rank gap = mean between-rank centroid distance minus mean within-rank
+distance; positive means same-rank ta'amim sit closer together. perm p
+shuffles the rank labels, so an effect driven by which marks happen to
+share a rank does not count. sil(rank) vs sil(ta'am): if the coarse
+grouping separates nearly as well as the marks themselves, the geometry
+is organised by hierarchy, not just by class.
+
+wrote results/v3_comparison/embedding_rank_cap40000.json

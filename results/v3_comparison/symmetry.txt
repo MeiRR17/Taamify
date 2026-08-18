@@ -1,0 +1,19 @@
+
+train on            test on             kind           n     acc  rank lift            95% CI
+---------------------------------------------------------------------------------------------
+R6 (Ashkenazi)      R1 (Sephardic-Jm)   cross     25,092   0.182     +11.4%  [+0.108, +0.119]
+R6 (Ashkenazi)      R2 (Sephardic-Jm)   cross     22,373   0.202     +17.1%  [+0.165, +0.177]
+R1 (Sephardic-Jm)   R2 (Sephardic-Jm)   within    22,373   0.565     +19.6%  [+0.190, +0.203]
+R2 (Sephardic-Jm)   R1 (Sephardic-Jm)   within    25,092   0.459     +14.9%  [+0.142, +0.157]
+---------------------------------------------------------------------------------------------
+
+within-tradition : accuracy 0.512, rank lift +17.3%
+cross-tradition  : accuracy 0.192, rank lift +14.2%
+
+accuracy retained across the tradition boundary: 37%
+rank structure retained                       : 82%
+
+the two cross-tradition directions differ by 0.019 in accuracy —
+if that is small, the gap is the boundary itself and not one awkward reader.
+
+wrote results/v3_comparison/symmetry.json
