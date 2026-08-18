@@ -91,6 +91,12 @@ PARSHIYOT = [
 # CERTIFICATE_VERIFY_FAILED.
 NO_CHECK_CERT = ["--no-check-certificates"]
 
+# YouTube now gates media URLs behind a JS "n" challenge. yt-dlp can solve it
+# with a local runtime, but the solver script itself is a remote component that
+# is not bundled — without this every download reports "Only images are
+# available" and exits.
+EJS = ["--remote-components", "ejs:github"]
+
 SOURCES = {
     # Dvir Porati — full Torah, Sephardic Jerusalem nusach
     "R1": ["https://www.youtube.com/playlist?list=PLG4SNJhlUwMw-J1dWHaabX9J963BHP3tC"],
@@ -164,7 +170,7 @@ def playlist_items(url: str) -> list:
 def download(video_id: str, out_path: Path) -> bool:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     r = subprocess.run(
-        ["yt-dlp", *COOKIES, *NO_CHECK_CERT, "-f", "bestaudio/best",
+        ["yt-dlp", *COOKIES, *NO_CHECK_CERT, *EJS, "-f", "bestaudio/best",
          "--extract-audio", "--audio-format", "wav", "--audio-quality", "0",
          "--postprocessor-args", "ffmpeg:-ac 1 -ar 44100",
          "--no-playlist", "--retries", "10", "--fragment-retries", "20",
