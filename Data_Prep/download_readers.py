@@ -39,18 +39,18 @@ PARSHIYOT = [
     ("07_vayetze", ["ויצא"]),
     ("08_vayishlach", ["וישלח"]),
     ("09_vayeshev", ["וישב"]),
-    ("10_miketz", ["מקץ"]),
+    ("10_miketz", ["מקץ", "מיקץ"]),
     ("11_vayigash", ["ויגש"]),
     ("12_vayechi", ["ויחי"]),
     ("13_shemot", ["שמות"]),
-    ("14_vaera", ["וארא"]),
-    ("15_bo", ["בא"]),
+    ("14_vaera", ["וארא", "ויראה"]),
+    ("15_bo", ["בא", "בוא"]),
     ("16_beshalach", ["בשלח"]),
     ("17_yitro", ["יתרו"]),
     ("18_mishpatim", ["משפטים"]),
     ("19_terumah", ["תרומה"]),
     ("20_tetzaveh", ["תצוה", "תצווה"]),
-    ("21_ki_tisa", ["כי תשא", "כי-תשא"]),
+    ("21_ki_tisa", ["כי תשא", "כי-תשא", "כי תישא"]),
     ("22_vayakhel", ["ויקהל"]),
     ("23_pekudei", ["פקודי"]),
     ("24_vayikra", ["ויקרא"]),
@@ -62,9 +62,9 @@ PARSHIYOT = [
     ("30_kedoshim", ["קדושים", "קדשים"]),
     ("31_emor", ["אמר", "אמור"]),
     ("32_behar", ["בהר"]),
-    ("33_bechukotai", ["בחוקותי", "בחקתי", "בחוקתי"]),
+    ("33_bechukotai", ["בחוקותי", "בחקתי", "בחוקתי", "בחוקותיי"]),
     ("34_bamidbar", ["במדבר"]),
-    ("35_naso", ["נשא", "נסו"]),
+    ("35_naso", ["נשא", "נסו", "נשוא"]),
     ("36_behaalotecha", ["בהעלותך", "בהעלתך"]),
     ("37_shlach", ["שלח"]),
     ("38_korach", ["קורח", "קרח"]),
@@ -74,7 +74,7 @@ PARSHIYOT = [
     ("42_matot", ["מטות", "מטת"]),
     ("43_masei", ["מסעי"]),
     ("44_devarim", ["דברים"]),
-    ("45_vaetchanan", ["ואתחנן"]),
+    ("45_vaetchanan", ["ואתחנן", "והתחנן"]),
     ("46_eikev", ["עקב", "עיקב"]),
     ("47_reeh", ["ראה"]),
     ("48_shoftim", ["שופטים", "שפטים"]),
@@ -85,6 +85,11 @@ PARSHIYOT = [
     ("53_haazinu", ["האזינו"]),
     ("54_vezot_haberacha", ["וזאת הברכה", "וזאת-הברכה"]),
 ]
+
+# An inspecting proxy presents its own CA, which curl trusts (system store) but
+# yt-dlp does not (its own bundle) — without this every extraction dies on
+# CERTIFICATE_VERIFY_FAILED.
+NO_CHECK_CERT = ["--no-check-certificates"]
 
 SOURCES = {
     # Dvir Porati — full Torah, Sephardic Jerusalem nusach
@@ -97,6 +102,11 @@ SOURCES = {
         "https://www.youtube.com/playlist?list=PLIPrspE62cFJiJIM30ZhDORbr9KLvKIrE",  # במדבר
         "https://www.youtube.com/playlist?list=PLIPrspE62cFKbEFx4-BD6t-KvE8J4ns90",  # דברים
     ],
+    # Shuki Getter — Yemenite nusach, 50 of 54 parshiyot in one numbered series.
+    # The third tradition: Yemenite is the most distant from both Ashkenazi and
+    # Sephardic-Jerusalem, so it is the strongest test of whether the transfer
+    # gap tracks musical distance. Missing 51-54 (Nitzavim..VeZot HaBerachah).
+    "R7": ["https://www.youtube.com/channel/UCkWDBLYiBdc-PnRVeC0goHw/videos"],
 }
 
 # Some uploads are titled in English only, so the Hebrew pass finds nothing.
@@ -140,7 +150,7 @@ COOKIES = []
 
 def playlist_items(url: str) -> list:
     r = subprocess.run(
-        ["yt-dlp", *COOKIES, "--flat-playlist", "--dump-single-json",
+        ["yt-dlp", *COOKIES, *NO_CHECK_CERT, "--flat-playlist", "--dump-single-json",
          "--socket-timeout", "30", url],
         capture_output=True, text=True,
     )
@@ -154,7 +164,7 @@ def playlist_items(url: str) -> list:
 def download(video_id: str, out_path: Path) -> bool:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     r = subprocess.run(
-        ["yt-dlp", *COOKIES, "-f", "bestaudio/best",
+        ["yt-dlp", *COOKIES, *NO_CHECK_CERT, "-f", "bestaudio/best",
          "--extract-audio", "--audio-format", "wav", "--audio-quality", "0",
          "--postprocessor-args", "ffmpeg:-ac 1 -ar 44100",
          "--no-playlist", "--retries", "10", "--fragment-retries", "20",
