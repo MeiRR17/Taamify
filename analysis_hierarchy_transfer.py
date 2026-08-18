@@ -43,7 +43,7 @@ RESULTS = PROJECT_DIR / "results"
 # Which tradition each reader sings in. R1/R2 come from the same Sephardic
 # Jerusalem channels; R6 is PocketTorah's Ashkenazi reading.
 TRADITION = {"R1": "Sephardic-Jerusalem", "R2": "Sephardic-Jerusalem",
-             "R6": "Ashkenazi"}
+             "R6": "Ashkenazi", "R7": "Yemenite"}
 
 
 def rank_error_stats(y_true, y_pred, class_names):
@@ -133,7 +133,10 @@ def main():
           "over-predicting a crowded rank cannot fake it. lift = observed - chance;\n"
           "a CI excluding zero means the hierarchy is showing through the errors.")
 
-    cross = [r for r in rows if TRADITION.get(r[0]) == "Ashkenazi"]
+    # Any reader outside the Sephardic-Jerusalem pair (R1/R2) is a cross-
+    # tradition fold — Ashkenazi (R6) and Yemenite (R7) alike.
+    cross = [r for r in rows if TRADITION.get(r[0]) not in
+             (None, "Sephardic-Jerusalem")]
     within = [r for r in rows if TRADITION.get(r[0]) == "Sephardic-Jerusalem"]
     if cross and within:
         cl = np.mean([r[2][0] - r[2][1] for r in cross])
@@ -153,7 +156,7 @@ def main():
 
     # Per-rank breakdown for the cross-tradition fold, where it matters most.
     for holdout, acc, st, ci, n, names in rows:
-        if TRADITION.get(holdout) != "Ashkenazi":
+        if TRADITION.get(holdout) not in ("Ashkenazi", "Yemenite"):
             continue
         p = (RESULTS / f"loro_{holdout}_top{args.classes}{args.suffix}"
              / args.model / f"{args.model}_embeddings.npz")

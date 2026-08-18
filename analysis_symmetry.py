@@ -42,6 +42,15 @@ TRANSFERS = [
     ("trainR6_testR2", "R6 (Ashkenazi)", "R2 (Sephardic-Jm)", "cross"),
     ("trainR1_testR2", "R1 (Sephardic-Jm)", "R2 (Sephardic-Jm)", "within"),
     ("trainR2_testR1", "R2 (Sephardic-Jm)", "R1 (Sephardic-Jm)", "within"),
+    # Yemenite (R7) — the third tradition. Sephardic<->Yemenite pairs test
+    # whether a *different* cross-tradition boundary collapses the same way;
+    # Ashkenazi<->Yemenite tests two cross-traditions against each other,
+    # which is the data point that turns "two traditions differ" into
+    # "does the amount of difference predict the amount of collapse".
+    ("trainR7_testR1", "R7 (Yemenite)", "R1 (Sephardic-Jm)", "cross"),
+    ("trainR1_testR7", "R1 (Sephardic-Jm)", "R7 (Yemenite)", "cross"),
+    ("trainR6_testR7", "R6 (Ashkenazi)", "R7 (Yemenite)", "cross-cross"),
+    ("trainR7_testR6", "R7 (Yemenite)", "R6 (Ashkenazi)", "cross-cross"),
 ]
 
 
@@ -75,22 +84,38 @@ def main():
     print("-" * 93)
 
     cross = [r for r in rows if r[3] == "cross"]
+    crosscross = [r for r in rows if r[3] == "cross-cross"]
     within = [r for r in rows if r[3] == "within"]
     if cross and within:
         ca, wa = np.mean([r[4] for r in cross]), np.mean([r[4] for r in within])
         cl = np.mean([r[5][0] - r[5][1] for r in cross])
         wl = np.mean([r[5][0] - r[5][1] for r in within])
-        print(f"\nwithin-tradition : accuracy {wa:.3f}, rank lift {wl:+.1%}")
-        print(f"cross-tradition  : accuracy {ca:.3f}, rank lift {cl:+.1%}")
+        print(f"\nwithin-tradition        : accuracy {wa:.3f}, rank lift {wl:+.1%}")
+        print(f"cross-tradition (vs Sephardic) : accuracy {ca:.3f}, rank lift {cl:+.1%}")
+        if crosscross:
+            cca = np.mean([r[4] for r in crosscross])
+            ccl = np.mean([r[5][0] - r[5][1] for r in crosscross])
+            print(f"cross-cross (Ashkenazi<->Yemenite) : accuracy {cca:.3f}, "
+                  f"rank lift {ccl:+.1%}")
         print(f"\naccuracy retained across the tradition boundary: "
               f"{100 * ca / max(wa, 1e-9):.0f}%")
         print(f"rank structure retained                       : "
               f"{100 * cl / max(wl, 1e-9):.0f}%")
-        if len(cross) == 2:
-            spread = abs(cross[0][4] - cross[1][4])
-            print(f"\nthe two cross-tradition directions differ by {spread:.3f} in "
-                  f"accuracy —\nif that is small, the gap is the boundary itself and "
-                  f"not one awkward reader.")
+
+        # Symmetry, per undirected pair: does train->test collapse by roughly
+        # the same amount as test->train? A pair where the two directions
+        # diverge sharply says the gap belongs to one reader, not the boundary.
+        by_pair = {}
+        for tag, src, dst, kind, acc, st, ci, n in rows:
+            if kind not in ("cross", "cross-cross"):
+                continue
+            pair = tuple(sorted((src.split(" (")[0], dst.split(" (")[0])))
+            by_pair.setdefault(pair, []).append(acc)
+        print("\nsymmetry by pair (max direction-to-direction spread):")
+        for pair, accs in sorted(by_pair.items()):
+            if len(accs) == 2:
+                print(f"  {pair[0]} <-> {pair[1]}: {accs[0]:.3f} / {accs[1]:.3f}  "
+                      f"(spread {abs(accs[0]-accs[1]):.3f})")
 
     out = RESULTS / "v3_comparison" / "symmetry.json"
     out.parent.mkdir(parents=True, exist_ok=True)

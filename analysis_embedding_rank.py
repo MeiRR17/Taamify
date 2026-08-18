@@ -38,7 +38,7 @@ from analysis_taam_similarity import rank_of  # noqa: E402
 PROJECT_DIR = Path(__file__).resolve().parent
 RESULTS = PROJECT_DIR / "results"
 TRADITION = {"R1": "Sephardic-Jerusalem", "R2": "Sephardic-Jerusalem",
-             "R6": "Ashkenazi"}
+             "R6": "Ashkenazi", "R7": "Yemenite"}
 
 
 def centroids(emb, y, n_classes):
