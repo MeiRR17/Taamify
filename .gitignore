@@ -67,3 +67,27 @@ desktop.ini
 
 # Hebrew docs (git encoding issues)
 *.gdoc
+
+# ── v3 additions ───────────────────────────────────────────────────────────
+# Derived spectrograms: 4.9 GB per window variant, rebuilt by
+# Data_Prep/extract_features_v3.py from the alignments, which are tracked.
+features_v3_*/
+features_v2/
+
+# Downloaded model weights (1.2 GB); models/wav2vec2-he is fetched by curl,
+# see Data_Prep/ctc_align.py
+models/
+
+# Audio and the cloned PocketTorah tree
+data/
+
+# Whisper transcripts and per-recording cleaned metadata: large, and fully
+# regenerable from the audio
+metadata/
+metadata_cleaned_v2/
+
+# Training artifacts: checkpoints, embeddings, plots. The tables and logs under
+# results/v3_comparison/ ARE tracked — that is the paper's evidence.
+results/*
+!results/v3_comparison/
+results/v3_comparison/*.log
