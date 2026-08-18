@@ -19,7 +19,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-SOURCES = ["aligned_dataset_v2.json", "aligned_dataset_pt.json"]
+SOURCES = ["aligned_dataset_v2.json", "aligned_dataset_pt.json", "aligned_dataset_r7.json"]
 OUT = PROJECT_DIR / "aligned_dataset_merged.json"
 
 # A reader needs enough coverage to stand as a held-out fold.
