@@ -438,6 +438,28 @@ tradition replaces it.
 
 Script: `Data_Prep/extract_features_v3.py --jitter-ms --jitter-readers`.
 
+### Tried to fix it directly — didn't work
+
+If R7's problem is timing precision, not label correctness (confirmed —
+`proportional_verse_locate.py`'s ta'am sequences were hand-verified against
+known verses before being trusted), a second forced-alignment pass over a
+*narrow* window around each already-correctly-labeled word should tighten
+timing the same way it did for R1/R2/R6's per-word pass in `ctc_align.py`.
+
+Tried at two window widths (`Data_Prep/refine_r7_alignment.py`, pilot on one
+recording): 0.45s and 1.0s padding around the pass-one span. Both made scores
+*worse*, not better — mean -4.08 and -3.44 respectively, against pass-one's
+-2.79 and R1's -1.91. Isolating a single word loses the sentence-level context
+the verse-level pass had to constrain the search; that loss outweighs the gain
+from a narrower window. **This is not a search-space problem** — it looks like
+a genuine mismatch between `imvladikon/wav2vec2-xls-r-300m-hebrew` and
+Yemenite phonology that a smaller window can't route around. The corpus was
+restored from backup after both trials; this result is not reflected in
+`aligned_dataset_r7.json`.
+
+What's left: a Hebrew acoustic model actually trained on Yemenite or Mizrahi
+pronunciation (none found), or a cleaner source recording — see `outreach/`.
+
 ## 8. Open
 
 - **A fourth reader, genuinely chanted.** Mechon Mamre has all 187 Torah
