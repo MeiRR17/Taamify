@@ -93,6 +93,17 @@ def main():
     ap.add_argument("--readers", nargs="+", default=None)
     ap.add_argument("--no-verse-align", action="store_true",
                     help="ignore verse_aligned_windows.json (ablation)")
+    ap.add_argument("--jitter-ms", type=float, default=0.0,
+                    help="Gaussian timing noise (sd, milliseconds) added independently "
+                         "to each window's start and end. For the noise-control "
+                         "experiment: R7's alignment is measurably less confident than "
+                         "R1/R2/R6's (median CTC score -2.79 vs -1.91), and noisy "
+                         "boundaries attenuate any real effect toward zero. Degrading a "
+                         "reader with a known-strong effect by a known amount says how "
+                         "much of R7's collapse noise alone could explain.")
+    ap.add_argument("--jitter-readers", nargs="+", default=None,
+                    help="restrict --jitter-ms to these readers (default: all)")
+    ap.add_argument("--jitter-seed", type=int, default=0)
     ap.add_argument("--out", default=None, help="output dir (default features_v3_<window>)")
     args = ap.parse_args()
 
@@ -101,6 +112,12 @@ def main():
     out_dir.mkdir(exist_ok=True)
     parts_dir = Path.home() / ".cache" / "taamify" / f"parts_v3_{out_dir.name}"
     parts_dir.mkdir(parents=True, exist_ok=True)
+
+    jitter_sd = args.jitter_ms / 1000.0
+    rng = np.random.default_rng(args.jitter_seed)
+    if jitter_sd > 0:
+        who = args.jitter_readers or "all readers"
+        print(f"timing jitter: sd {args.jitter_ms:.0f} ms on {who}")
 
     with open(DATASET, encoding="utf-8") as f:
         records = json.load(f)
@@ -174,6 +191,19 @@ def main():
                     start, end, method = va["word_start"], va["word_end"], "verse_ctc"
                 else:
                     start, end, method = item["start"], item["end"], "stored"
+
+                if jitter_sd > 0 and (args.jitter_readers is None
+                                      or item["reader"] in args.jitter_readers):
+                    # start and end move independently, so duration is perturbed
+                    # too — a misaligned window is wrong about where the word
+                    # begins *and* how long it lasts, which is what the Whisper
+                    # boundary measurements showed.
+                    start = start + rng.normal(0.0, jitter_sd)
+                    end = end + rng.normal(0.0, jitter_sd)
+                    if end - start < MIN_SLICE_SEC:
+                        skipped["jitter_collapsed"] += 1
+                        continue
+                    method = f"{method}+jitter"
 
                 spec = extract_spectrogram(y_full, start, end)
                 if spec is None:
