@@ -2,18 +2,20 @@
 fold  tradition                    n     acc   errors  within-rank   chance     lift            95% CI
 --------------------------------------------------------------------------------------------------------
 R1    Sephardic-Jerusalem     25,092   0.472   13,255       38.0%    21.8%   +16.2%  [+0.156, +0.169]
+R2    Sephardic-Jerusalem     22,373   0.552   10,027       45.7%    27.5%   +18.2%  [+0.175, +0.190]
 R6    Ashkenazi               62,170   0.153   52,649       30.3%    21.9%    +8.4%  [+0.081, +0.087]
+R7    Yemenite                23,519   0.091   21,370       21.1%    20.6%    +0.5%  [+0.000, +0.010]
 --------------------------------------------------------------------------------------------------------
 within-rank = share of the model's mistakes that land on a ta'am of the
 same traditional rank. chance respects the model's own prediction mix, so
 over-predicting a crowded rank cannot fake it. lift = observed - chance;
 a CI excluding zero means the hierarchy is showing through the errors.
 
-within-tradition folds : accuracy 0.472, rank lift +16.2%
-cross-tradition fold   : accuracy 0.153, rank lift +8.4%
+within-tradition folds : accuracy 0.512, rank lift +17.2%
+cross-tradition fold   : accuracy 0.122, rank lift +4.5%
 
-accuracy retained across traditions: 32%
-rank structure retained          : 52%
+accuracy retained across traditions: 24%
+rank structure retained          : 26%
 
 If the rank lift survives far better than the accuracy does, the
 melody is what fails to transfer, not the structure it encodes.
@@ -25,6 +27,18 @@ Emperor         8,215       1,557    19.0%    11.2%    +7.7%
 King           19,628       1,894     9.6%     4.9%    +4.7%
 Duke            6,467         535     8.3%     5.9%    +2.4%
 Servant        18,339      11,990    65.4%    50.5%   +14.8%
+--------------------------------------------------------------
+A rank whose lift is near zero contributes nothing to the aggregate
+effect, however large its raw share looks: a crowded rank catches
+stray predictions by size alone.
+
+cross-tradition fold (R7) — where the errors land, by true rank:
+true rank      errors   same rank    share   chance     lift
+--------------------------------------------------------------
+Emperor         4,311         126     2.9%     2.8%    +0.2%
+King            6,967       1,602    23.0%    23.2%    -0.2%
+Duke            2,348         320    13.6%    14.3%    -0.7%
+Servant         7,744       2,466    31.8%    30.1%    +1.8%
 --------------------------------------------------------------
 A rank whose lift is near zero contributes nothing to the aggregate
 effect, however large its raw share looks: a crowded rank catches
