@@ -397,6 +397,47 @@ plausible number.
 
 ---
 
+## 8. The R7 noise-control result: the Yemenite collapse is not yet a finding
+
+Section 6 raised an open question: R7's near-total collapse on both accuracy
+(0.091, literal chance) and rank lift (+0.5%, CI touching zero) could mean
+Yemenite tradition is genuinely more structurally distant, or could mean R7's
+measurably noisier alignment (median CTC score -2.79 against R1's -1.91) is
+attenuating a real effect toward zero — noisy labels shrink observed effects
+mechanically, which is arithmetic, not a hypothesis.
+
+The control: inject Gaussian timing noise, independently on each window's start
+and end, into R1 alone (`--jitter-ms`, `Data_Prep/extract_features_v3.py`) —
+same architecture, same training budget, same evaluation, only the boundary
+precision degraded — and watch where R1's own rank lift goes.
+
+| jitter (ms, sd) | accuracy | rank lift | 95% CI |
+|---|---|---|---|
+| 0 (clean) | 47.2% | +16.2% | [+15.6%, +16.9%] |
+| 100 | 45.6% | +14.9% | [+14.3%, +15.6%] |
+| 200 | 42.8% | +12.3% | [+11.6%, +12.9%] |
+| 400 | 36.0% | +6.5% | [+5.9%, +7.1%] |
+
+**Extrapolating the curve past 400ms lands on R7's observed +0.5% at roughly
+600ms of injected jitter.** That is not an implausible amount of timing error
+for R7's pipeline: R1/R2's *corrected* boundaries land at 114-161ms median
+error against gold, but that correction (verse-level CTC informed by Whisper's
+macro-location) is exactly what failed for R7 — its accepted windows come from
+the proportional fallback, whose confidence gap versus R1 (sd 0.29 vs 0.56,
+median score -2.79 vs -1.91) is entirely consistent with timing error in the
+few-hundred-millisecond range implied by this curve.
+
+**Conclusion: R7's collapse cannot currently be reported as evidence that
+Yemenite tradition is structurally more distant.** Noise alone plausibly
+accounts for all of it. The two-tradition finding (Section 6, R1/R2 vs R6)
+stands on its own — it passed four independent confound checks on comparably
+clean data. The three-tradition distance-gradient story does not yet stand,
+and should not be claimed until R7 has an alignment pipeline whose confidence
+is closer to R1/R2/R6's, or an independent, cleaner source for a third
+tradition replaces it.
+
+Script: `Data_Prep/extract_features_v3.py --jitter-ms --jitter-readers`.
+
 ## 8. Open
 
 - **A fourth reader, genuinely chanted.** Mechon Mamre has all 187 Torah

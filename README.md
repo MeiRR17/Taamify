@@ -44,6 +44,15 @@ is substantially shared.**
 > (673–1,172 words, all of Bereshit), so they measured noise. See
 > `results/v3_comparison/FINDINGS.md`.
 
+A fourth reader (R7, Yemenite) was added to test whether transfer severity
+tracks *musical distance* rather than just "same tradition or not." It
+collapses further than R6 on both accuracy and rank lift — but a noise-control
+experiment (inject comparable timing jitter into R1 and watch its own lift
+decay) shows that gap is fully explainable by R7's noisier alignment alone.
+**R7 is not yet evidence for the distance-gradient hypothesis.** The
+two-tradition finding above does not depend on it. Details in
+`results/v3_comparison/FINDINGS.md`, section 8.
+
 ## The corpus
 
 ```
