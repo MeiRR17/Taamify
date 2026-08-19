@@ -457,6 +457,15 @@ Yemenite phonology that a smaller window can't route around. The corpus was
 restored from backup after both trials; this result is not reflected in
 `aligned_dataset_r7.json`.
 
+A third variant was tried before concluding this: keep the *verse-level*
+context (don't isolate single words) but tighten the macro-window to pass-one's
+own word-boundary bounding box instead of the original proportional-character
+estimate. Result: median -2.85 against pass-one's -2.79 — statistically a
+wash, not an improvement. Window width, at either the word or the verse level,
+is not the lever. Three attempts, three negative results, converging on the
+same conclusion: this is the acoustic model's unfamiliarity with Yemenite
+phonemes, not a search-space problem.
+
 What's left: a Hebrew acoustic model actually trained on Yemenite or Mizrahi
 pronunciation (none found), or a cleaner source recording — see `outreach/`.
 
