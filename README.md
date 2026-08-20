@@ -54,12 +54,17 @@ should not be reported as a finding. Its **accuracy** collapse (9.1%, literal
 chance) is not — that same 550ms of jitter predicts ~29% accuracy for a
 merely-noisy reader, 20 points above what R7 actually shows.
 
-**So: no claim about Yemenite's *structure* survives scrutiny. A claim that
-Yemenite's *melody* transfers even worse than Ashkenazi's — beyond what noise
-explains — does.** The two-tradition finding above (R1/R2 vs R6) is the
-headline and needs no revision; R7 enters only as an explicitly secondary,
-accuracy-only observation. Details in `results/v3_comparison/FINDINGS.md`,
-sections 8-9.
+**Update — walked back.** An independent acoustic measurement
+(pitch-contour distance, not classifier behavior) says R6 is *further* from
+Sephardic-Jerusalem than R7 is (1.550 vs 0.962 above the noise floor), the
+opposite of what a distance-explains-the-extra-collapse story predicts. R7's
+own internal consistency is tight (comparable to R1/R2, tighter than R6's),
+so this isn't dismissible as more alignment noise. **No claim about *why* R7's
+accuracy collapses further than noise explains is currently supported — not
+tradition distance, not yet anything else identified.** The two-tradition
+finding above (R1/R2 vs R6) is the headline and is unaffected; R7 no longer
+supports any interpretation beyond "it collapses, for reasons not yet
+understood." Details in `results/v3_comparison/FINDINGS.md`, sections 8-10.
 
 ## The corpus
 

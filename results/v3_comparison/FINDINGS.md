@@ -497,6 +497,76 @@ further than Ashkenazi's, by more than its alignment noise alone can explain
 — suggestive of a distance gradient, not confirmation of one. Any claim about
 its *hierarchical structure* specifically is unsupported and should not be
 made.
+### Accuracy and rank-lift disagree about how much noise explains
+
+If R7 were simply "R1, but noisier," one noise level should explain both of
+its collapsed metrics. Fitting each curve separately and solving for R7's
+actual observed value says otherwise:
+
+| target | jitter needed |
+|---|---|
+| rank lift -> R7's +0.5% | ~550 ms |
+| accuracy -> R7's 9.1% | ~873 ms |
+
+**A single noise level cannot account for both.** At the rank-lift-implied
+noise level (550ms), R1's accuracy curve predicts ~29% — R7's actual accuracy
+is 9.1%, a 20-point gap noise does not cover.
+
+Read together with section 8: **the rank-lift collapse is fully explained by
+noise and should not be claimed as a finding. The accuracy collapse is not** —
+something beyond timing noise is also driving it down, consistent with (though
+not proof of) a genuine tradition-distance effect on top of the alignment
+problem. The two metrics get different verdicts, not the same one.
+
+**Reporting consequence:** R7 does not belong in the headline claim (Section
+6, R1/R2 vs R6, which stands alone and needs no revision). It belongs as an
+explicitly secondary, accuracy-only observation: Yemenite transfer collapses
+further than Ashkenazi's, by more than its alignment noise alone can explain
+— suggestive of a distance gradient, not confirmation of one. Any claim about
+its *hierarchical structure* specifically is unsupported and should not be
+made.
+
+
+### The acoustic-distance measurement says the opposite — walking back the interpretation
+
+Extending `analysis_tradition_distance.py` to R7 was meant to give independent
+support for "R7's leftover accuracy collapse reflects real tradition
+distance." It gives the opposite result:
+
+| reader | pitch-contour distance from R1/R2 | above floor (0.653) |
+|---|---|---|
+| R6 (Ashkenazi) | 1.550 | +0.897 |
+| R7 (Yemenite) | 0.962 | +0.308 |
+
+**R6 is acoustically further from Sephardic-Jerusalem than R7 is** — by nearly
+3x the margin above the noise floor. If classifier collapse tracked acoustic
+distance, R6 should collapse *less* than R7, not more. It's the reverse: R6
+retains 15.3% accuracy and a real rank-lift; R7 sits at chance with a
+rank-lift indistinguishable from zero.
+
+This isn't dismissible as another alignment-noise artifact of R7's data: R7's
+own within-reader self-distance (0.588) is as tight as R1's and R2's (0.530,
+0.589) and considerably tighter than R6's own (0.904) — if boundary noise were
+smearing R7's pitch contours together, its self-consistency should be the one
+that suffers, and it isn't.
+
+**Withdrawing the previous section's framing.** "R7's extra accuracy collapse
+is suggestive of genuine tradition distance" doesn't survive this — an
+independent acoustic measure points the other way. What's left standing:
+R7's rank-lift collapse is noise (section 8, unchanged). R7's accuracy
+collapse is real and larger than noise alone explains (section 9's arithmetic
+still holds), but *why* is now genuinely unresolved — not evidence for
+tradition distance, since the one direct measure of distance argues against
+it. Whatever is actually driving R7's extra accuracy loss is unidentified.
+Candidates not yet ruled out: a qualitatively different error structure in
+R7's alignment that symmetric Gaussian jitter doesn't reproduce (the
+noise-control's jitter model may be the wrong shape of noise, not just the
+wrong amount), or something about the recording itself — a single-reader
+pedagogical series, plausibly at a different tempo or register than
+congregational chanting — unrelated to musical tradition at all.
+
+**This is not a data point for the distance-gradient hypothesis anymore. It's
+an open, unexplained discrepancy**, and should be reported as exactly that.
 
 ## 8. Open
 

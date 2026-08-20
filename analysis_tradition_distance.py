@@ -181,21 +181,57 @@ def main():
     print("A pair at the floor is indistinguishable; the gap above it is the real\n"
           "melodic difference between those two readers.")
 
-    same = [d for (a, b), d in pairs.items() if "R6" not in (a, b)]
-    cross = [d for (a, b), d in pairs.items() if "R6" in (a, b)]
-    if same and cross:
-        s, c = np.mean(same), np.mean(cross)
+    same = [d for (a, b), d in pairs.items()
+            if a in ("R1", "R2") and b in ("R1", "R2")]
+    outsiders = sorted({r for pair in pairs for r in pair if r not in ("R1", "R2")})
+
+    if same:
+        s = np.mean(same)
         print(f"\nR1-R2 (same tradition by label) : {s:.3f}  "
               f"= floor + {s - floor:+.3f}")
-        print(f"pairs involving R6              : {c:.3f}  "
-              f"= floor + {c - floor:+.3f}")
-        if c > s:
-            print(f"\nR6 is {(c - floor) / max(s - floor, 1e-9):.1f}x further from the "
-                  f"Sephardic readers, above the noise floor,\nthan they are from each "
-                  f"other. The grouping is acoustic, not just a label.")
+        if s - floor < 0.1 * floor:
+            print("  -> at the floor: the labelled grouping is reproduced acoustically.")
+
+    # Per outsider (R6, R7, ...): distance from the Sephardic pair, so the
+    # question "is Yemenite further than Ashkenazi" gets an actual number
+    # instead of a guess. This is what the accuracy-collapse asymmetry
+    # (FINDINGS.md section 9 — R7's accuracy collapses more than its noise
+    # level explains) predicts if it reflects real tradition distance: R7
+    # should sit further from R1/R2 than R6 does, by more than sampling noise.
+    print(f"\n{'reader':<8}{'dist from R1/R2':>18}{'above floor':>14}")
+    print("-" * 42)
+    per_outsider = {}
+    for rd in outsiders:
+        ds = [d for (a, b), d in pairs.items()
+              if (a == rd and b in ("R1", "R2")) or (b == rd and a in ("R1", "R2"))]
+        if ds:
+            m = np.mean(ds)
+            per_outsider[rd] = m
+            print(f"{rd:<8}{m:>18.3f}{m - floor:>+14.3f}")
+    print("-" * 42)
+
+    if len(per_outsider) >= 2:
+        ranked = sorted(per_outsider.items(), key=lambda kv: -kv[1])
+        print(f"\nranked by acoustic distance from Sephardic-Jerusalem (furthest first):")
+        for rd, m in ranked:
+            print(f"  {rd}: {m:.3f}")
+        furthest = ranked[0][0]
+        print(f"\n{furthest} is the most acoustically distant from R1/R2. If that "
+              f"reader is also the one whose\naccuracy collapses furthest beyond "
+              f"what alignment noise explains, the distance-gradient\nreading gets "
+              f"independent support from acoustics alone — a different kind of "
+              f"evidence\nthan classifier behavior, which is the point of measuring "
+              f"it this way.")
+    elif per_outsider:
+        (rd, m), = per_outsider.items()
+        if m > floor + 0.1 * floor:
+            print(f"\n{rd} is further from the Sephardic readers, above the noise "
+                  f"floor, than they are\nfrom each other. The grouping is acoustic, "
+                  f"not just a label.")
         else:
-            print("\nThe labelled grouping is NOT reproduced acoustically. Every claim\n"
-                  "resting on 'R1 and R2 share a tradition' has to be withdrawn.")
+            print("\nThe labelled grouping is NOT reproduced acoustically. Every "
+                  "claim resting on\n'these readers share a tradition' has to be "
+                  "withdrawn.")
 
     out = PROJECT_DIR / "results" / "v3_comparison" / "tradition_distance.json"
     out.parent.mkdir(parents=True, exist_ok=True)
