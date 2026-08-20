@@ -568,6 +568,38 @@ congregational chanting — unrelated to musical tradition at all.
 **This is not a data point for the distance-gradient hypothesis anymore. It's
 an open, unexplained discrepancy**, and should be reported as exactly that.
 
+### Why accuracy and acoustic distance can legitimately disagree under the same noise
+
+One more check before leaving this open: is R7's score distribution bimodal —
+mostly fine words plus a contaminated minority of badly misaligned ones —
+rather than uniformly shifted? A mixture like that would explain averaged
+statistics (pitch-contour distance) looking fine while per-instance ones
+(accuracy) don't, without needing any tradition-distance story at all.
+
+It isn't. R7's score histogram is unimodal, roughly the same shape as R1's,
+shifted about one point lower (peak near -3.0 against R1's peak near -1.85,
+no long tail toward catastrophic values). Every word is uniformly a bit
+harder to align, not a fine majority plus a broken minority.
+
+That still leaves a real methodological point worth recording: **the two
+measurements are not equally sensitive to the same noise by construction.**
+Acoustic distance averages over 45-60 instances per ta'am per reader before
+computing a distance — symmetric, zero-mean timing jitter mostly cancels out
+of that average. Accuracy and rank-lift are scored per test instance, where
+the same jitter degrades every single decision. A noise level that barely
+moves an averaged statistic can still crater a per-instance one. So R7 reading
+as "not unusually distant" acoustically while collapsing far below chance on
+accuracy is not necessarily a contradiction requiring a new explanation — it
+may just be what one consistent noise source looks like when measured by a
+statistic that's structurally immune to it and one that isn't.
+
+Net position: no tool available right now distinguishes "residual alignment
+noise past what the Gaussian-jitter model captures" from "something about
+this recording, unrelated to tradition, that hurts a per-word classifier"
+as the cause of R7's extra accuracy loss. Both remain open. Tradition
+distance specifically stays ruled against, since the noise-robust measurement
+argues against it directly.
+
 ## 8. Open
 
 - **A fourth reader, genuinely chanted.** Mechon Mamre has all 187 Torah
