@@ -469,6 +469,35 @@ phonemes, not a search-space problem.
 What's left: a Hebrew acoustic model actually trained on Yemenite or Mizrahi
 pronunciation (none found), or a cleaner source recording — see `outreach/`.
 
+### Accuracy and rank-lift disagree about how much noise explains
+
+If R7 were simply "R1, but noisier," one noise level should explain both of
+its collapsed metrics. Fitting each curve separately and solving for R7's
+actual observed value says otherwise:
+
+| target | jitter needed |
+|---|---|
+| rank lift -> R7's +0.5% | ~550 ms |
+| accuracy -> R7's 9.1% | ~873 ms |
+
+**A single noise level cannot account for both.** At the rank-lift-implied
+noise level (550ms), R1's accuracy curve predicts ~29% — R7's actual accuracy
+is 9.1%, a 20-point gap noise does not cover.
+
+Read together with section 8: **the rank-lift collapse is fully explained by
+noise and should not be claimed as a finding. The accuracy collapse is not** —
+something beyond timing noise is also driving it down, consistent with (though
+not proof of) a genuine tradition-distance effect on top of the alignment
+problem. The two metrics get different verdicts, not the same one.
+
+**Reporting consequence:** R7 does not belong in the headline claim (Section
+6, R1/R2 vs R6, which stands alone and needs no revision). It belongs as an
+explicitly secondary, accuracy-only observation: Yemenite transfer collapses
+further than Ashkenazi's, by more than its alignment noise alone can explain
+— suggestive of a distance gradient, not confirmation of one. Any claim about
+its *hierarchical structure* specifically is unsupported and should not be
+made.
+
 ## 8. Open
 
 - **A fourth reader, genuinely chanted.** Mechon Mamre has all 187 Torah

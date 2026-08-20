@@ -45,13 +45,21 @@ is substantially shared.**
 > `results/v3_comparison/FINDINGS.md`.
 
 A fourth reader (R7, Yemenite) was added to test whether transfer severity
-tracks *musical distance* rather than just "same tradition or not." It
-collapses further than R6 on both accuracy and rank lift — but a noise-control
-experiment (inject comparable timing jitter into R1 and watch its own lift
-decay) shows that gap is fully explainable by R7's noisier alignment alone.
-**R7 is not yet evidence for the distance-gradient hypothesis.** The
-two-tradition finding above does not depend on it. Details in
-`results/v3_comparison/FINDINGS.md`, section 8.
+tracks *musical distance*. A noise-control experiment (inject known timing
+jitter into R1, watch its metrics decay, solve for the jitter level that
+would produce R7's actual numbers) gives **two different answers depending on
+the metric**: R7's rank-lift collapse (+0.5%, chance-indistinguishable) is
+fully explained by its noisier alignment (~550ms of jitter would do it) and
+should not be reported as a finding. Its **accuracy** collapse (9.1%, literal
+chance) is not — that same 550ms of jitter predicts ~29% accuracy for a
+merely-noisy reader, 20 points above what R7 actually shows.
+
+**So: no claim about Yemenite's *structure* survives scrutiny. A claim that
+Yemenite's *melody* transfers even worse than Ashkenazi's — beyond what noise
+explains — does.** The two-tradition finding above (R1/R2 vs R6) is the
+headline and needs no revision; R7 enters only as an explicitly secondary,
+accuracy-only observation. Details in `results/v3_comparison/FINDINGS.md`,
+sections 8-9.
 
 ## The corpus
 
