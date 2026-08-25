@@ -113,6 +113,13 @@ SOURCES = {
     # Sephardic-Jerusalem, so it is the strongest test of whether the transfer
     # gap tracks musical distance. Missing 51-54 (Nitzavim..VeZot HaBerachah).
     "R7": ["https://www.youtube.com/channel/UCkWDBLYiBdc-PnRVeC0goHw/videos"],
+    # Nissim Shaked — same tradition as R1/R2 (Sephardic-Jerusalem). A second
+    # reader pair alone is a thin sample for "does this generalize"; a third
+    # same-tradition reader turns two LORO numbers into a distribution.
+    # Channel has exactly 100 uploads total (verified: /videos tab and the
+    # UU uploads playlist both list the identical 100 items, and no range
+    # past 100 returns anything more) — not a pagination cap to work around.
+    "R8": ["https://www.youtube.com/playlist?list=UUXyys8qCt8k_1k4rrvolx3A"],
 }
 
 # Some uploads are titled in English only, so the Hebrew pass finds nothing.
@@ -130,7 +137,13 @@ HEB_BOUNDARY = r"(?:^|[^א-ת])"
 
 def match_parasha(title: str):
     """Longest whole-word Hebrew match, so 'לך לך' wins over 'לך' and בא never
-    matches inside בשלח. Falls back to the Latin title for English-only uploads."""
+    matches inside בשלח. Falls back to the Latin title for English-only uploads.
+    Haftara readings are excluded even when they name a parasha in the title
+    (e.g. "הפטרת חיי שרה") — the haftara is a different text (from Nevi'im,
+    not the Torah), so tagging it with the parasha's Torah-text alignment
+    would align the wrong words to the audio entirely."""
+    if "הפטר" in title:
+        return None
     best = None
     for key, names in PARSHIYOT:
         for name in names:
