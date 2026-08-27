@@ -13,7 +13,11 @@ Output:
                                             voiced_ratio, duration}}
 
 Selection: longest-duration, highest-probability verified words of each ta'am
-in 01_bereshit (single 400 MB download instead of 54).
+in a single parasha (one WAV load instead of 54). R1's channel has no
+01_bereshit upload at all (5 of 54 parshiyot are simply missing from that
+channel — not a download gap); 03_lech_lecha is the closest available
+parasha with solid coverage of every top-11 class (638 verified words vs.
+02_noah's 11).
 """
 
 import json
@@ -24,7 +28,8 @@ import numpy as np
 import soundfile as sf
 
 PROJECT_DIR = Path(__file__).parent
-WAV = PROJECT_DIR / "data" / "R1" / "wav" / "01_bereshit.wav"
+PARASHA = "03_lech_lecha"
+WAV = PROJECT_DIR / "data" / "R1" / "wav" / f"{PARASHA}.wav"
 ALIGNED = PROJECT_DIR / "aligned_dataset_v2.json"
 OUT_DIR = PROJECT_DIR / "app_assets" / "teacher"
 OUT_JSON = PROJECT_DIR / "app_assets" / "teacher_contours.json"
@@ -56,8 +61,8 @@ def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     with open(ALIGNED, encoding="utf-8") as f:
         records = [r for r in json.load(f)
-                   if r["reader"] == "R1" and r["parasha"] == "01_bereshit"]
-    print(f"{len(records)} verified words in R1/bereshit")
+                   if r["reader"] == "R1" and r["parasha"] == PARASHA]
+    print(f"{len(records)} verified words in R1/{PARASHA}")
 
     print(f"loading {WAV.name} (may download from Drive)...", flush=True)
     y_full, _ = librosa.load(WAV, sr=SR, mono=True)
