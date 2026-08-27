@@ -74,3 +74,27 @@ place this relationship can be observed at all.
 - **Tier 3** has no statistical role here; it only matters for the
   rare-class training-augmentation step (Milestone 1C, step 4), where it's
   the sole source of even a single clean example.
+
+## Result: the CRF prior experiment (Tier 1, step 3)
+
+A/B'd `--crf` vs `--crf --grammar-prior` on the identical R1/R2/R8 LORO
+folds and CNN checkpoints (single seed each). Of Tier 1's four pairs, only
+Mahapakh→Pashta and Mercha→Tipecha apply — Darga and Zarqa aren't in the
+current top-11 class set.
+
+| Fold | CRF (no prior) | CRF + grammar prior | Δ |
+|---|---|---|---|
+| R1 held out | 57.5% | 58.2% | +0.7 |
+| R2 held out | 92.3% | 92.1% | −0.2 |
+| R8 held out | 90.7% | 90.5% | −0.2 |
+| Mean | 80.17% | 80.27% | **+0.1** |
+
+**Not a real effect at this sample size.** A small gain on the hardest fold
+(R1) is cancelled by small losses on the two folds already near ceiling
+(R2/R8 both >90%, where there's little room to move and a nudge can only
+add noise). Net average moved 0.1 points on a single seed per fold — well
+within what a different random init would produce on its own. The grammar
+prior is a defensible idea (Tier 1 pairs are real, independently confirmed
+patterns) but this implementation, on this corpus, doesn't move the number.
+Recorded here rather than left untested or overclaimed, per the project's
+standard for small effects (see `results/v3_comparison/FINDINGS.md`).
