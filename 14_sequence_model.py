@@ -33,6 +33,16 @@ FEATURES_DIR = Path(os.environ.get("TAAMIFY_FEATURES",
 CACHE_DIR = Path("/tmp")
 OUT_DIR = PROJECT_DIR / "results" / "sequence_model"
 
+# Near-deterministic tier from results/v3_comparison/ben13_grammar_associations.md
+# -- Ben13-taught combinations independently confirmed as the dominant real
+# transition (>=50%) in aligned_dataset_merged.json, not just Ben13's claim.
+GRAMMAR_PRIOR_PAIRS = [
+    ("Mahapakh", "Pashta"),
+    ("Darga", "Tevir"),
+    ("Mercha", "Tipecha"),
+    ("Zarqa", "Munach"),
+]
+
 
 def load_train_module():
     spec = importlib.util.spec_from_file_location(
@@ -123,6 +133,25 @@ class LinearChainCRF(nn.Module):
         self.transitions = nn.Parameter(torch.randn(num_tags, num_tags) * 0.1)
         self.start_transitions = nn.Parameter(torch.randn(num_tags) * 0.1)
         self.end_transitions = nn.Parameter(torch.randn(num_tags) * 0.1)
+
+    def apply_grammar_prior(self, class_names, pairs=GRAMMAR_PRIOR_PAIRS, bias=2.0):
+        """Nudge specific (from, to) transitions upward before training --
+        a soft prior, not a hard rule: every weight, including these, is
+        still updated normally by training. `pairs` defaults to the
+        near-deterministic tier from
+        results/v3_comparison/ben13_grammar_associations.md -- Ben13-taught
+        combinations independently confirmed as the dominant real pattern
+        (>=50% of the time) in this corpus, not just Ben13's own claim.
+        Pairs naming a class not in `class_names` (e.g. Darga/Zarqa before
+        Milestone 4 widens past top-11) are skipped, not errors."""
+        idx = {c: i for i, c in enumerate(class_names)}
+        applied = []
+        with torch.no_grad():
+            for a, b in pairs:
+                if a in idx and b in idx:
+                    self.transitions[idx[a], idx[b]] += bias
+                    applied.append(f"{a}->{b}")
+        return applied
 
     def _log_partition(self, emissions, mask):
         # emissions: (B, L, C) | mask: (B, L) bool, True = real token
@@ -224,7 +253,16 @@ def main():
                     help="add a linear-chain CRF on top of the BiLSTM emissions, "
                          "trained jointly by sequence log-likelihood and decoded "
                          "with Viterbi instead of per-word argmax")
+    ap.add_argument('--grammar-prior', action='store_true',
+                    help="requires --crf: bias the CRF's transition matrix "
+                         "toward GRAMMAR_PRIOR_PAIRS before training (a soft "
+                         "starting point, not a hard rule -- see "
+                         "results/v3_comparison/ben13_grammar_associations.md). "
+                         "Report both --crf and --crf --grammar-prior numbers "
+                         "side by side, not just whichever looks better.")
     args = ap.parse_args()
+    if args.grammar_prior and not args.crf:
+        ap.error("--grammar-prior requires --crf")
 
     train_mod = load_train_module()
     device = train_mod.pick_device()
@@ -302,6 +340,11 @@ def main():
                            dtype=torch.float32).to(device)
     model = VerseTagger(emb.shape[1], num_classes).to(device)
     crf = LinearChainCRF(num_classes).to(device) if args.crf else None
+    if crf and args.grammar_prior:
+        applied = crf.apply_grammar_prior(class_names)
+        applied_str = ', '.join(applied) if applied else \
+            '(none -- no pair has both classes in this class set)'
+        print(f"grammar prior applied to: {applied_str}")
     params = list(model.parameters()) + (list(crf.parameters()) if crf else [])
     opt = torch.optim.Adam(params, lr=1e-3, weight_decay=1e-4)
     crit = nn.CrossEntropyLoss(weight=weights, ignore_index=-100)
@@ -372,7 +415,8 @@ def main():
     base_mcc = matthews_corrcoef(y[test_mask], cnn_preds[test_mask])
 
     out_dir = OUT_DIR
-    tag = (args.tag or "") + ("_crf" if args.crf else "")
+    tag = (args.tag or "") + ("_crf" if args.crf else "") + \
+        ("_gprior" if args.grammar_prior else "")
     if args.holdout:
         out_dir = OUT_DIR / f"loro_{args.holdout}{('_' + tag) if tag else ''}"
     elif tag:
@@ -383,7 +427,8 @@ def main():
 
     split_desc = (f"LORO holdout={args.holdout}" if args.holdout
                   else "random 70/15/15 by verse")
-    seq_label = "CNN + verse BiLSTM + CRF" if args.crf else "CNN + verse BiLSTM"
+    seq_label = "CNN + verse BiLSTM" + (" + CRF" if args.crf else "") + \
+        (" (grammar prior)" if args.grammar_prior else "")
     lines = ["# Sequence Context Model — verse-level BiLSTM over frozen CNN embeddings",
              "",
              f"Base CNN: {args.checkpoint.name} | split: {split_desc}, "
