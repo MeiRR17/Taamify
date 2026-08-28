@@ -540,7 +540,8 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         # ── Training ──
         model.train()
         train_loss = 0.0
-        train_preds, train_labels = [], []
+        n_train = 0
+        train_preds_gpu, train_labels_gpu = [], []
 
         for inputs, labels in train_loader:
             inputs, labels = inputs.to(device), labels.to(device)
@@ -562,19 +563,28 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                 loss.backward()
                 optimizer.step()
 
+            # .item() is one scalar sync (cheap); keeping predicted/labels on
+            # device and only converting once per epoch (below) avoids a
+            # blocking GPU->CPU round trip on every batch, which on MPS
+            # serializes what should be async dispatch and dominates wall
+            # time far more than the actual matmuls for a model this size.
             train_loss += loss.item() * inputs.size(0)
+            n_train += inputs.size(0)
             _, predicted = torch.max(outputs, 1)
-            train_preds.extend(predicted.cpu().numpy())
-            train_labels.extend(labels.cpu().numpy())
+            train_preds_gpu.append(predicted)
+            train_labels_gpu.append(labels)
 
-        train_loss /= len(train_labels)
-        train_acc = np.mean(np.array(train_preds) == np.array(train_labels))
+        train_loss /= n_train
+        train_preds = torch.cat(train_preds_gpu).cpu().numpy()
+        train_labels = torch.cat(train_labels_gpu).cpu().numpy()
+        train_acc = np.mean(train_preds == train_labels)
         train_bal_acc = balanced_accuracy_score(train_labels, train_preds)
 
         # ── Validation ──
         model.eval()
         val_loss = 0.0
-        val_preds, val_labels_list = [], []
+        n_val = 0
+        val_preds_gpu, val_labels_gpu = [], []
 
         with torch.no_grad():
             for inputs, labels in val_loader:
@@ -582,12 +592,15 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
                 val_loss += loss.item() * inputs.size(0)
+                n_val += inputs.size(0)
                 _, predicted = torch.max(outputs, 1)
-                val_preds.extend(predicted.cpu().numpy())
-                val_labels_list.extend(labels.cpu().numpy())
+                val_preds_gpu.append(predicted)
+                val_labels_gpu.append(labels)
 
-        val_loss /= len(val_labels_list)
-        val_acc = np.mean(np.array(val_preds) == np.array(val_labels_list))
+        val_loss /= n_val
+        val_preds = torch.cat(val_preds_gpu).cpu().numpy()
+        val_labels_list = torch.cat(val_labels_gpu).cpu().numpy()
+        val_acc = np.mean(val_preds == val_labels_list)
         val_bal_acc = balanced_accuracy_score(val_labels_list, val_preds)
 
         # Update LR scheduler
@@ -1018,6 +1031,26 @@ def plot_model_comparison(all_results, output_dir):
     print(f"\n  Comparison saved to {output_dir}")
 
 
+class FocalLoss(nn.Module):
+    """Class-weighted focal loss (Lin et al. 2017): down-weights easy,
+    high-confidence-correct examples so hard/rare classes get more gradient
+    signal relative to the dominant ones, on top of the existing inverse-
+    frequency class weights. Reduces to plain weighted cross-entropy at
+    gamma=0. Proposed early in the project, not adopted then in favor of
+    weighted CE alone; revisited for Milestone 4's wider, more imbalanced
+    class set (Tipecha:Pazer is ~140:1 at 20 classes) — never tested
+    head-to-head against weighted CE before now."""
+    def __init__(self, weight=None, gamma=2.0):
+        super().__init__()
+        self.gamma = gamma
+        self.ce = nn.CrossEntropyLoss(weight=weight, reduction='none')
+
+    def forward(self, logits, targets):
+        ce_loss = self.ce(logits, targets)
+        pt = torch.exp(-ce_loss)
+        return (((1 - pt) ** self.gamma) * ce_loss).mean()
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 #  MAIN
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1054,7 +1087,11 @@ def run_experiment(model_name, args, data_tuple, device, results_dir):
     print(f"  Class weights: {dict(zip(class_names, class_weights.round(4)))}")
 
     # Loss, optimizer, scheduler
-    criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
+    if args.loss == 'focal':
+        criterion = FocalLoss(weight=class_weights_tensor, gamma=args.focal_gamma)
+        print(f"  Loss: focal (gamma={args.focal_gamma}), class-weighted")
+    else:
+        criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min', factor=0.5, patience=5, min_lr=1e-6
@@ -1151,6 +1188,14 @@ def main():
                         help='L2 regularization weight decay (default: 1e-3)')
     parser.add_argument('--patience', type=int, default=10,
                         help='Early stopping patience (default: 10)')
+    parser.add_argument('--loss', choices=['ce', 'focal'], default='ce',
+                        help='ce = class-weighted cross-entropy (default). '
+                             'focal = class-weighted focal loss, for severe '
+                             'class imbalance (Milestone 4).')
+    parser.add_argument('--focal-gamma', type=float, default=2.0,
+                        help='Focal loss focusing parameter (default: 2.0, '
+                             'the value from Lin et al. 2017). Ignored unless '
+                             '--loss focal.')
     parser.add_argument('--no-specaugment', action='store_true',
                         help='Disable SpecAugment')
     parser.add_argument('--no-amp', action='store_true',
