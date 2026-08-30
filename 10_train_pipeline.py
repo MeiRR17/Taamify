@@ -712,12 +712,23 @@ def evaluate_model(model, data_loader, device, class_names, split_name="Test"):
         except ValueError:
             per_class_auc[name] = float('nan')
 
-    # Confusion matrix
-    cm = confusion_matrix(all_labels, all_preds)
+    # Confusion matrix -- same labels= pin as classification_report below, so
+    # a class absent from this fold's test set still gets its row/column
+    # instead of silently shrinking the matrix out of alignment with class_names
+    cm = confusion_matrix(all_labels, all_preds, labels=list(range(len(class_names))))
 
-    # Classification report
+    # Classification report. labels=range(len(class_names)) is required, not
+    # cosmetic: a class with real training volume can still have zero
+    # instances in one particular test fold (a real edge case once the class
+    # count reaches the long tail -- e.g. a LORO holdout reader that happens
+    # to contain none of a rare class's few occurrences). Without pinning
+    # the label set explicitly, sklearn infers it from whichever classes
+    # actually appear in y_true/y_pred and raises if that's shorter than
+    # target_names, instead of just reporting zero support for that class.
     report = classification_report(all_labels, all_preds,
-                                   target_names=class_names, digits=4)
+                                   labels=list(range(len(class_names))),
+                                   target_names=class_names, digits=4,
+                                   zero_division=0)
 
     metrics = {
         'accuracy': accuracy,
