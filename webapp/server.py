@@ -23,7 +23,8 @@ from pathlib import Path
 import librosa
 import numpy as np
 import torch
-from fastapi import FastAPI, File, UploadFile
+import torch.nn as nn
+from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -37,6 +38,7 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 TEACHER_DIR = PROJECT_DIR / "app_assets" / "teacher"
 TEACHER_JSON = PROJECT_DIR / "app_assets" / "teacher_contours.json"
+VERIFY_HEAD_PATH = PROJECT_DIR / "results" / "binary_verify" / "production_verify_head.pth"
 
 # audio constants — must match extract_features_v2.py
 SR = 22050
@@ -68,6 +70,29 @@ def get_model():
                       class_names=ckpt["class_names"],
                       test_acc=ckpt.get("test_metrics", {}).get("accuracy"))
     return _state
+
+
+def get_verify_head():
+    """Stage A (Milestone 3): [embedding ; one-hot(candidate class)] -> match
+    logit, trained on top of this same production CNN's frozen embeddings
+    (see 15_binary_verify_model.py, production mode). Loaded once, cached in
+    _state like every other model here."""
+    if "verify_head" not in _state:
+        spec = importlib.util.spec_from_file_location(
+            "bv", PROJECT_DIR / "15_binary_verify_model.py")
+        bv = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(bv)
+        ckpt = torch.load(VERIFY_HEAD_PATH, map_location="cpu", weights_only=False)
+        st = get_model()
+        if list(ckpt["class_names"]) != list(st["class_names"]):
+            raise RuntimeError(
+                "verify-head class_names don't match the loaded CNN's -- it "
+                "was trained against a different checkpoint's embedding space")
+        head = bv.VerifyHead(ckpt["emb_dim"], len(ckpt["class_names"]), ckpt["hidden"])
+        head.load_state_dict(ckpt["model_state_dict"])
+        head.eval().to(st["device"])
+        _state["verify_head"] = head
+    return _state["verify_head"]
 
 
 def get_whisper():
@@ -108,6 +133,41 @@ def classify(spec, top_k=3):
     order = probs.argsort()[::-1]
     return ([(st["class_names"][i], float(probs[i])) for i in order[:top_k]],
             {st["class_names"][i]: float(probs[i]) for i in range(len(probs))})
+
+
+def embed(spec):
+    """128-dim penultimate-layer embedding for one spectrogram, from the
+    already-loaded production CNN -- same forward-hook technique as
+    14_sequence_model.py's embed_everything(), just for a single live
+    sample instead of a whole reader's worth of precomputed features."""
+    st = get_model()
+    last_linear = [m for m in st["model"].modules() if isinstance(m, nn.Linear)][-1]
+    captured = []
+    handle = last_linear.register_forward_hook(
+        lambda _m, inp, _out: captured.append(inp[0].detach().cpu()))
+    spec_norm = (spec - spec.mean()) / (spec.std() + 1e-8)
+    x = torch.from_numpy(spec_norm)[None, None].to(st["device"])
+    with torch.no_grad():
+        st["model"](x)
+    handle.remove()
+    return captured[0][0].numpy()
+
+
+def verify_match(spec, expected_taam):
+    """Stage A: does this spectrogram match expected_taam? Returns
+    (is_match, confidence) -- confidence is the model's own sigmoid
+    probability, not thresholded."""
+    st = get_model()
+    if expected_taam not in st["class_names"]:
+        raise ValueError(f"unknown ta'am {expected_taam!r}")
+    head = get_verify_head()
+    emb = torch.from_numpy(embed(spec)).float()[None].to(st["device"])
+    idx = st["class_names"].index(expected_taam)
+    onehot = torch.zeros(1, len(st["class_names"]), device=st["device"])
+    onehot[0, idx] = 1.0
+    with torch.no_grad():
+        prob = torch.sigmoid(head(emb, onehot)).item()
+    return prob >= 0.5, prob
 
 
 def f0_curve(y, n_points=60):
@@ -192,6 +252,23 @@ async def practice(clip_id: str, audio: UploadFile = File(...)):
             "dtw_cost_semitones": round(cost, 2),
             "student_curve": np.round(curve, 2).tolist(),
             "teacher_curve": np.round(teacher_curve, 2).tolist()}
+
+
+@app.post("/api/verify_reading")
+async def verify_reading(audio: UploadFile = File(...), expected_taam: str = Form(...)):
+    """Milestone 3, Stage A: does this recording match expected_taam? Single
+    word, not a whole verse -- matches exactly what Stage A was trained and
+    measured on (results/v3_comparison/milestone3_binary_verify.md)."""
+    y = load_wav(await audio.read())
+    spec = word_spectrogram(y, 0, len(y) / SR)
+    if spec is None:
+        return {"error": "no audio detected — record louder and clearly"}
+    try:
+        is_match, confidence = verify_match(spec, expected_taam)
+    except ValueError as e:
+        return {"error": str(e)}
+    return {"is_match": is_match, "confidence": round(confidence, 3),
+            "expected_taam": expected_taam}
 
 
 @app.post("/api/analyze")

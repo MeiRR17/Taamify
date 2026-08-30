@@ -24,8 +24,14 @@ deployment always queries with the text's actual expected class, correct
 most of the time and occasionally wrong when a learner errs.
 
 Usage:
+  # LORO-style, to measure generalization (as above) -- writes a report only
   python 15_binary_verify_model.py --checkpoint results/loro_R1_top11_cap40000/deep_cnn/deep_cnn_best.pth \
       --readers R1 R2 R8 --holdout R1
+
+  # Production mode, to actually deploy Stage A: no held-out reader, trains
+  # on all of --readers, saves a checkpoint the webapp can load
+  python 15_binary_verify_model.py --checkpoint results/random_top11/deep_cnn/deep_cnn_best.pth \
+      --readers R1 R2 R8
 """
 
 import argparse
@@ -88,11 +94,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--checkpoint', type=Path, required=True)
     ap.add_argument('--readers', nargs='+', required=True)
-    ap.add_argument('--holdout', required=True,
+    ap.add_argument('--holdout', default=None,
                     help="LORO-style: train/val on the other readers, test only "
                          "on this one. --checkpoint should be the CNN trained "
                          "without this reader, matching 14_sequence_model.py's "
-                         "convention, for an apples-to-apples comparison.")
+                         "convention, for an apples-to-apples comparison. Omit "
+                         "for production mode: trains on all --readers combined "
+                         "(verse-level 85/15 train/val, no held-out test reader) "
+                         "and saves a checkpoint instead of a measurement report.")
     ap.add_argument('--epochs', type=int, default=30)
     ap.add_argument('--batch-size', type=int, default=256)
     ap.add_argument('--seed', type=int, default=0)
@@ -102,16 +111,19 @@ def main():
     train_mod = seq_mod.load_train_module()
     device = train_mod.pick_device()
 
-    train_readers = [r for r in args.readers if r != args.holdout]
+    production = args.holdout is None
+    train_readers = list(args.readers) if production else \
+        [r for r in args.readers if r != args.holdout]
     print(f"embedding train/val readers {train_readers}...")
     emb_tr, _, y_tr, verses_tr, _, class_names = seq_mod.embed_everything(
         args.checkpoint, train_readers, device, train_mod)
-    print(f"embedding held-out reader {args.holdout}...")
-    emb_te, cnn_preds_te, y_te, _, _, _ = seq_mod.embed_everything(
-        args.checkpoint, [args.holdout], device, train_mod)
-
     num_classes = len(class_names)
-    baseline_top1 = accuracy_score(y_te, cnn_preds_te)
+
+    if not production:
+        print(f"embedding held-out reader {args.holdout}...")
+        emb_te, cnn_preds_te, y_te, _, _, _ = seq_mod.embed_everything(
+            args.checkpoint, [args.holdout], device, train_mod)
+        baseline_top1 = accuracy_score(y_te, cnn_preds_te)
 
     # verse-level train/val split, same discipline as 14_sequence_model.py:
     # no verse straddles the split
@@ -124,12 +136,13 @@ def main():
 
     emb_train, y_train = emb_tr[~in_val], y_tr[~in_val]
     emb_val, y_val = emb_tr[in_val], y_tr[in_val]
-    print(f"words: train {len(y_train)}, val {len(y_val)}, "
-          f"test(holdout) {len(y_te)}")
+    print(f"words: train {len(y_train)}, val {len(y_val)}"
+          + ("" if production else f", test(holdout) {len(y_te)}"))
 
     Xp_train, Cp_train, Mp_train = make_pairs(emb_train, y_train, num_classes, args.seed)
     Xp_val, Cp_val, Mp_val = make_pairs(emb_val, y_val, num_classes, args.seed + 1)
-    Xp_test, Cp_test, Mp_test = make_pairs(emb_te, y_te, num_classes, args.seed + 2)
+    if not production:
+        Xp_test, Cp_test, Mp_test = make_pairs(emb_te, y_te, num_classes, args.seed + 2)
 
     emb_dim = emb_tr.shape[1]
     model = VerifyHead(emb_dim, num_classes).to(device)
@@ -187,9 +200,23 @@ def main():
                 break
 
     model.load_state_dict(best_state)
-    test_metrics = evaluate(Xp_test, Cp_test, Mp_test)
-
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    if production:
+        ckpt_path = OUT_DIR / "production_verify_head.pth"
+        torch.save({
+            "model_state_dict": model.state_dict(),
+            "class_names": list(class_names),
+            "emb_dim": emb_dim,
+            "hidden": 64,
+            "cnn_checkpoint": str(args.checkpoint),
+            "readers": list(args.readers),
+            "best_val_accuracy": best_val_acc,
+        }, ckpt_path)
+        print(f"\nwrote -> {ckpt_path} (best val acc {best_val_acc:.4f})")
+        return
+
+    test_metrics = evaluate(Xp_test, Cp_test, Mp_test)
     out_path = OUT_DIR / f"holdout_{args.holdout}.md"
     lines = [
         f"# Stage A (binary verify) — holdout {args.holdout}",

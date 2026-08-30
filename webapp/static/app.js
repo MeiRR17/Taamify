@@ -161,6 +161,24 @@ $("record-btn").addEventListener("click", async () => {
       ? `${top.taam.replace(/_/g, " ")} ✓`.replace(" ✓", " (correct)")
       : `heard: ${String(top.taam || "?").replace(/_/g, " ")}`;
     $("score-dtw").textContent = `${Math.round(d.dtw_component)}`;
+
+    // Milestone 3 Stage A: independent binary verification against the
+    // known target mark -- a second, more principled signal alongside the
+    // classifier/DTW blend above, not a replacement for it.
+    const vfd = new FormData();
+    vfd.append("audio", wav, "attempt.wav");
+    vfd.append("expected_taam", $("taam-select").value);
+    const vres = await fetch("/api/verify_reading", { method: "POST", body: vfd });
+    const vd = await vres.json();
+    const badge = $("verify-badge");
+    if (vd.error) {
+      badge.textContent = "–"; badge.style.color = "";
+    } else {
+      badge.textContent = vd.is_match
+        ? `✓ (${Math.round(vd.confidence * 100)}%)`
+        : `✗ (${Math.round(vd.confidence * 100)}%)`;
+      badge.style.color = vd.is_match ? "#1e7e40" : "#b03434";
+    }
     const v = $("verdict");
     v.className = "verdict";
     if (d.score >= 70) { v.classList.add("good"); v.textContent =
