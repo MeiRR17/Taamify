@@ -1,0 +1,31 @@
+{
+ "test_reader": "R2",
+ "seed": 42,
+ "features": "features_v3_word",
+ "results": {
+  "single": {
+   "accuracy": 0.5085236124093114,
+   "balanced_accuracy": 0.49820112017909496,
+   "mcc": 0.4521952007124086,
+   "f1_macro": 0.4870789517577079
+  },
+  "naive": {
+   "accuracy": 0.47545288645569056,
+   "balanced_accuracy": 0.4618593486418458,
+   "mcc": 0.41259006049722297,
+   "f1_macro": 0.45309659345129005
+  },
+  "tradition": {
+   "accuracy": 0.5223216272755598,
+   "balanced_accuracy": 0.5144854158605653,
+   "mcc": 0.4640527320783991,
+   "f1_macro": 0.5084150857230912
+  },
+  "reader": {
+   "accuracy": 0.49227756264743844,
+   "balanced_accuracy": 0.4862197044398345,
+   "mcc": 0.43219922605237293,
+   "f1_macro": 0.4739210891542486
+  }
+ }
+}
