@@ -39,3 +39,44 @@ where Stage A's 88.4% applies (continuous natural reading, three voices) and
 where it hasn't been shown to hold (isolated didactic single-word audio).
 Treat 68.6% as the honest number for *that* narrower claim, not as a
 contradiction of Milestone 3's headline result.
+
+## Follow-up: does training on BEN13AUG actually help? (single-fold pilot)
+
+Prompted by the same question this file answers — is Ben13 worth more than
+reference material — ran a direct pilot: R1 held out, 25 classes, `deep_cnn`
++ weighted CE, with vs. without `BEN13AUG` (the 60 synthetic examples for
+Shalshelet/Yerach_Ben_Yomo/Mercha_Kefula/Qarney_Para prepped in Milestone 1C)
+folded into training.
+
+| Condition | Classes | Accuracy | Balanced accuracy |
+|---|---|---|---|
+| Without BEN13AUG | 23 (R1/R2/R8 alone have zero real Shalshelet/Qarney_Para instances) | 41.0% | 34.8% |
+| With BEN13AUG | 25 | 38.6% | 32.4% |
+
+**It made things worse, not better — and the benefit it was meant to buy is
+unmeasurable on this fold anyway.** R1's test set has 0 real instances of
+Yerach_Ben_Yomo/Shalshelet/Qarney_Para and exactly 1 of Mercha_Kefula, so
+there's nothing to confirm the model actually learned these classes against.
+Meanwhile recall declined on 13 of the 21 shared classes (improved on 8) —
+a broad, if not universal, regression on the classes that *can* be measured.
+Plausible mechanism: 15 near-identical synthetic variants (only pitch/time
+varied) of a single real clip is low-diversity signal that adds confusable
+noise to the shared softmax without giving the model a real new decision
+boundary to learn.
+
+**Verdict: do not fold BEN13AUG into training as currently built.** This is
+a single-fold pilot (R1 only), not a full LORO validation, but the effect is
+broad enough and the potential upside unmeasurable enough that the honest
+call is to hold, not to extrapolate a full 3-fold sweep to confirm a result
+that's already this one-sided. If the rare classes are revisited, the more
+promising paths are real additional recordings, or richer augmentation
+(noise/reverb/EQ variation, not just pitch-shift/time-stretch of one clip) —
+not more synthetic copies of the same single source.
+
+One genuinely useful thing this pilot caught along the way: `10_train_pipeline.py`'s
+`classification_report`/`confusion_matrix` calls crashed the first time this
+ran, losing an entire training run's checkpoint and metrics, because a class
+with real training volume can still have zero instances in one particular
+LORO test fold — a real edge case only surfaced once classes are pushed into
+the long tail. Fixed (`labels=range(len(class_names))` pinned explicitly on
+both calls) and confirmed the rerun completes cleanly.
