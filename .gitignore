@@ -91,3 +91,8 @@ metadata_cleaned_v2/
 results/*
 !results/v3_comparison/
 results/v3_comparison/*.log
+
+# Recorded audio + metadata from /api/verify_reading's no-match/ambiguous
+# logging (webapp/server.py's log_attempt) -- local-only by design, never
+# committed: this is other people's recorded voices, not project source.
+app_assets/collected_attempts/

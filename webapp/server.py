@@ -7,10 +7,19 @@ Serves the single-page frontend (webapp/static/) and three API groups:
   GET  /api/teacher                  practice catalogue (per-ta'am word clips)
   GET  /api/teacher/audio/{clip_id}  the teacher's audio clip
   POST /api/practice/{clip_id}       student WAV -> hybrid score + curves
+  POST /api/verify_reading           student WAV + expected ta'am -> match/confidence
   POST /api/analyze                  full recording WAV -> per-word ta'am list
 
 The browser records raw PCM and uploads standard WAV, so no ffmpeg is needed.
 Feature extraction matches the training pipeline exactly.
+
+/api/verify_reading attempts that come back no-match, or land in the
+ambiguous confidence band, are logged locally (app_assets/collected_attempts/)
+-- this is the only real path to a Stage B test set (the training corpus has
+zero genuine reading errors; see results/v3_comparison/ben13_zeroshot_eval.md).
+Local files only, nothing leaves the machine. A real pilot with other people's
+voices needs a consent notice in the UI before this is turned on for them --
+not built here, since there's no real user-facing deployment yet.
 
 Run:  uvicorn webapp.server:app --port 8077        (from the project root)
 """
@@ -18,6 +27,8 @@ Run:  uvicorn webapp.server:app --port 8077        (from the project root)
 import importlib.util
 import io
 import json
+import time
+import uuid
 from pathlib import Path
 
 import librosa
@@ -39,6 +50,8 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 TEACHER_DIR = PROJECT_DIR / "app_assets" / "teacher"
 TEACHER_JSON = PROJECT_DIR / "app_assets" / "teacher_contours.json"
 VERIFY_HEAD_PATH = PROJECT_DIR / "results" / "binary_verify" / "production_verify_head.pth"
+ATTEMPTS_DIR = PROJECT_DIR / "app_assets" / "collected_attempts"
+ATTEMPTS_LOG = ATTEMPTS_DIR / "attempts_log.jsonl"
 
 # audio constants — must match extract_features_v2.py
 SR = 22050
@@ -200,6 +213,29 @@ def load_wav(data: bytes):
     return np.nan_to_num(y)
 
 
+AMBIGUOUS_BAND = (0.3, 0.7)
+
+
+def log_attempt(audio_bytes: bytes, expected_taam: str, is_match: bool, confidence: float):
+    """Save a no-match or ambiguous-confidence /api/verify_reading attempt
+    locally -- the only real path to a Stage B test set, since the training
+    corpus has zero genuine reading errors. A confident match teaches
+    nothing new (that's most of the traffic); a no-match or a genuinely
+    uncertain call is exactly the population Stage B eventually needs real
+    ground truth for. Local files only; see the module docstring for the
+    consent caveat before this is ever pointed at a real user."""
+    if is_match and not (AMBIGUOUS_BAND[0] <= confidence <= AMBIGUOUS_BAND[1]):
+        return
+    ATTEMPTS_DIR.mkdir(parents=True, exist_ok=True)
+    clip_id = uuid.uuid4().hex[:12]
+    (ATTEMPTS_DIR / f"{clip_id}.wav").write_bytes(audio_bytes)
+    record = {"clip_id": clip_id, "timestamp": round(time.time(), 3),
+              "expected_taam": expected_taam, "is_match": is_match,
+              "confidence": round(confidence, 3)}
+    with open(ATTEMPTS_LOG, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 # ------------------------------------------------------------------- API --
 @app.get("/api/info")
 def info():
@@ -259,7 +295,8 @@ async def verify_reading(audio: UploadFile = File(...), expected_taam: str = For
     """Milestone 3, Stage A: does this recording match expected_taam? Single
     word, not a whole verse -- matches exactly what Stage A was trained and
     measured on (results/v3_comparison/milestone3_binary_verify.md)."""
-    y = load_wav(await audio.read())
+    raw = await audio.read()
+    y = load_wav(raw)
     spec = word_spectrogram(y, 0, len(y) / SR)
     if spec is None:
         return {"error": "no audio detected — record louder and clearly"}
@@ -267,6 +304,7 @@ async def verify_reading(audio: UploadFile = File(...), expected_taam: str = For
         is_match, confidence = verify_match(spec, expected_taam)
     except ValueError as e:
         return {"error": str(e)}
+    log_attempt(raw, expected_taam, is_match, confidence)
     return {"is_match": is_match, "confidence": round(confidence, 3),
             "expected_taam": expected_taam}
 
