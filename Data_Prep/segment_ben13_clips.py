@@ -146,7 +146,12 @@ def main():
                 clip = y[s_idx:e_idx]
                 if len(clip) < SR * 0.05:
                     continue
-                local_name = f"{cls}_{type_name}-{e['order']}.wav"
+                # position i is part of the filename: a class can repeat
+                # within one combo clip (e.g. "Mercha -> Tipecha -> Mercha"),
+                # and without it the second occurrence silently overwrote the
+                # first on disk -- confirmed after the fact via a 114-vs-102
+                # unique-filename count mismatch against the manifest.
+                local_name = f"{cls}_{type_name}-{e['order']}_{i}.wav"
                 local_path = out_dir / local_name
                 sf.write(local_path, clip, SR)
                 manifest_out.append({
