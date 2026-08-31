@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Taamify — Ben13 segment review</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { height: 100vh; overflow: hidden; }
+  header { padding: 12px 20px; }
+  header h1 { font-size: 18px; }
+  .progress { font-size: 13px; color: var(--muted); }
+
+  .layout { display: flex; height: calc(100vh - 56px); }
+
+  /* ── sidebar ── */
+  .sidebar { width: 340px; flex-shrink: 0; border-right: 1px solid var(--border);
+             display: flex; flex-direction: column; background: var(--card); }
+  .filters { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex;
+             flex-direction: column; gap: 6px; }
+  .filters select, .filters input[type=text] {
+    width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px;
+    font-size: 13px; background: #fff;
+  }
+  .filters label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+  .list { flex: 1; overflow-y: auto; }
+  .row {
+    padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: pointer;
+    display: flex; align-items: center; gap: 8px; font-size: 13px;
+  }
+  .row:hover { background: var(--accent-soft); }
+  .row.active { background: var(--accent-soft); border-left: 3px solid var(--accent); }
+  .row .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--good); }
+  .row .dot.low { background: var(--warn); }
+  .row .main { flex: 1; min-width: 0; }
+  .row .taam { font-weight: 600; }
+  .row .meta { color: var(--muted); font-size: 11.5px; }
+  .row .reviewed { color: var(--good); font-size: 14px; flex-shrink: 0; }
+
+  /* ── detail pane ── */
+  .detail { flex: 1; overflow-y: auto; padding: 24px 32px; max-width: 760px; }
+  .detail h2 { font-size: 22px; margin-bottom: 4px; }
+  .detail .sub { color: var(--muted); font-size: 13.5px; margin-bottom: 20px; }
+  .field-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .field { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .field .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 3px; }
+  .field .v { font-size: 15px; font-weight: 600; }
+  .field .v.low { color: var(--warn); }
+  .player-block { margin-bottom: 18px; }
+  .player-block .lbl { font-size: 12.5px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+  audio { width: 100%; }
+  .hebrew { font-size: 17px; direction: rtl; }
+  textarea {
+    width: 100%; min-height: 110px; padding: 10px 12px; border: 1px solid var(--border);
+    border-radius: 8px; font-size: 14px; font-family: inherit; resize: vertical;
+  }
+  .flag-row { display: flex; gap: 8px; margin: 12px 0; }
+  .flag-btn {
+    padding: 6px 14px; border-radius: 100px; border: 1px solid var(--border);
+    background: #fff; font-size: 12.5px; cursor: pointer; color: var(--muted);
+  }
+  .flag-btn.active-good { background: #e5f4e9; border-color: var(--good); color: var(--good); }
+  .flag-btn.active-bad { background: #f9e7e7; border-color: var(--bad); color: var(--bad); }
+  .flag-btn.active-unsure { background: #faf3dd; border-color: var(--warn); color: var(--warn); }
+  .save-row { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+  .save-row button {
+    padding: 8px 20px; border-radius: 6px; border: none; background: var(--accent);
+    color: #fff; font-size: 13.5px; cursor: pointer; font-weight: 600;
+  }
+  .save-row .status { font-size: 12.5px; color: var(--good); }
+  .nav-row { display: flex; gap: 8px; margin-top: 24px; }
+  .nav-row button {
+    padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border); background: #fff;
+    cursor: pointer; font-size: 13px;
+  }
+  .empty { color: var(--muted); padding: 40px; text-align: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><h1>Ben13 segment review</h1></div>
+  <div class="progress" id="progress">loading…</div>
+</header>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="filters">
+      <select id="f-taam"><option value="">All ta'amim</option></select>
+      <label><input type="checkbox" id="f-lowconf"> Low-confidence only</label>
+      <label><input type="checkbox" id="f-unreviewed"> Unreviewed only</label>
+      <input type="text" id="f-search" placeholder="Search…">
+    </div>
+    <div class="list" id="list"></div>
+  </div>
+
+  <div class="detail" id="detail">
+    <div class="empty">Select a clip on the left.</div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let items = [];
+let filtered = [];
+let currentId = null;
+let dirty = false;
+
+async function load() {
+  items = await fetch("/api/review/items").then(r => r.json());
+  const taams = [...new Set(items.map(i => i.taam))].sort();
+  taams.forEach(t => {
+    const o = document.createElement("option");
+    o.value = t; o.textContent = t.replace(/_/g, " ");
+    $("f-taam").appendChild(o);
+  });
+  applyFilters();
+}
+
+function applyFilters() {
+  const taam = $("f-taam").value;
+  const lowOnly = $("f-lowconf").checked;
+  const unreviewedOnly = $("f-unreviewed").checked;
+  const q = $("f-search").value.trim().toLowerCase();
+  filtered = items.filter(i =>
+    (!taam || i.taam === taam) &&
+    (!lowOnly || i.low_confidence) &&
+    (!unreviewedOnly || !(i.note || i.flag)) &&
+    (!q || i.clip_id.toLowerCase().includes(q) || i.taam.toLowerCase().includes(q))
+  );
+  // low-confidence first, then by ta'am, then by source order
+  filtered.sort((a, b) =>
+    (b.low_confidence - a.low_confidence) ||
+    a.taam.localeCompare(b.taam) ||
+    a.source_order - b.source_order);
+  renderList();
+  updateProgress();
+}
+
+function updateProgress() {
+  const reviewed = items.filter(i => i.note || i.flag).length;
+  $("progress").textContent = `${reviewed} / ${items.length} reviewed · showing ${filtered.length}`;
+}
+
+function renderList() {
+  const list = $("list");
+  list.innerHTML = "";
+  filtered.forEach(item => {
+    const row = document.createElement("div");
+    row.className = "row" + (item.clip_id === currentId ? " active" : "");
+    row.innerHTML =
+      `<span class="dot ${item.low_confidence ? "low" : ""}"></span>` +
+      `<span class="main"><span class="taam">${item.taam.replace(/_/g, " ")}</span>` +
+      `<div class="meta">${item.source_type} #${item.source_order} · ${item.duration}s · score ${item.ctc_score}</div></span>` +
+      (item.note || item.flag ? `<span class="reviewed">✓</span>` : "");
+    row.addEventListener("click", () => selectClip(item.clip_id));
+    list.appendChild(row);
+  });
+}
+
+function selectClip(clipId) {
+  if (dirty) saveCurrentNote(false);
+  currentId = clipId;
+  const item = items.find(i => i.clip_id === clipId);
+  if (!item) return;
+  dirty = false;
+  renderList();
+
+  const idx = filtered.findIndex(i => i.clip_id === clipId);
+  $("detail").innerHTML = `
+    <h2>${item.taam.replace(/_/g, " ")}</h2>
+    <div class="sub">${item.clip_id} · ${item.source_type} #${item.source_order}</div>
+    <div class="field-grid">
+      <div class="field"><div class="k">CTC score</div><div class="v ${item.low_confidence ? "low" : ""}">${item.ctc_score}</div></div>
+      <div class="field"><div class="k">Duration</div><div class="v">${item.duration}s</div></div>
+      <div class="field"><div class="k">Confidence</div><div class="v ${item.low_confidence ? "low" : ""}">${item.low_confidence ? "Low" : "OK"}</div></div>
+      <div class="field"><div class="k">Position</div><div class="v">${idx + 1} / ${filtered.length}</div></div>
+    </div>
+    ${item.source_text ? `<div class="sub hebrew" style="margin-bottom:16px">${item.source_text_sfaradi || item.source_text}</div>` : ""}
+    <div class="player-block">
+      <div class="lbl">Cut segment (what the model would train/test on)</div>
+      <audio controls src="/api/review/audio/${item.clip_id}"></audio>
+    </div>
+    <div class="player-block">
+      <div class="lbl">Full source clip (context for judging the cut)</div>
+      <audio controls src="/api/review/source_audio/${item.clip_id}"></audio>
+    </div>
+    <div class="flag-row" id="flag-row"></div>
+    <textarea id="note-box" placeholder="Notes on this cut — e.g. bleeds into the neighboring word, silence included, wrong boundary…">${item.note || ""}</textarea>
+    <div class="save-row">
+      <button id="save-btn">Save</button>
+      <span class="status" id="save-status"></span>
+    </div>
+    <div class="nav-row">
+      <button id="prev-btn">← Previous</button>
+      <button id="next-btn">Next →</button>
+    </div>
+  `;
+
+  const flags = [["good", "Cut looks right"], ["bad", "Cut is wrong"], ["unsure", "Unsure"]];
+  const flagRow = $("flag-row");
+  let currentFlag = item.flag || "";
+  flags.forEach(([val, label]) => {
+    const b = document.createElement("button");
+    b.className = "flag-btn" + (currentFlag === val ? ` active-${val}` : "");
+    b.textContent = label;
+    b.addEventListener("click", () => {
+      currentFlag = currentFlag === val ? "" : val;
+      item.flag = currentFlag;
+      dirty = true;
+      [...flagRow.children].forEach(c => c.className = "flag-btn");
+      if (currentFlag) b.className = `flag-btn active-${currentFlag}`;
+    });
+    flagRow.appendChild(b);
+  });
+
+  $("note-box").addEventListener("input", () => { dirty = true; });
+  $("save-btn").addEventListener("click", () => saveCurrentNote(true));
+  $("prev-btn").addEventListener("click", () => step(-1));
+  $("next-btn").addEventListener("click", () => step(1));
+}
+
+function step(delta) {
+  const idx = filtered.findIndex(i => i.clip_id === currentId);
+  const next = filtered[idx + delta];
+  if (next) selectClip(next.clip_id);
+}
+
+async function saveCurrentNote(showStatus) {
+  const item = items.find(i => i.clip_id === currentId);
+  if (!item) return;
+  const noteBox = $("note-box");
+  const note = noteBox ? noteBox.value : (item.note || "");
+  await fetch("/api/review/note", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clip_id: item.clip_id, note, flag: item.flag || "" }),
+  });
+  item.note = note;
+  dirty = false;
+  updateProgress();
+  renderList();
+  if (showStatus) {
+    const s = $("save-status");
+    if (s) { s.textContent = "Saved ✓"; setTimeout(() => { if (s) s.textContent = ""; }, 1500); }
+  }
+}
+
+document.addEventListener("keydown", (e) => {
+  if (document.activeElement.tagName === "TEXTAREA") return;
+  if (e.key === "ArrowDown" || e.key === "j") step(1);
+  if (e.key === "ArrowUp" || e.key === "k") step(-1);
+});
+
+$("f-taam").addEventListener("change", applyFilters);
+$("f-lowconf").addEventListener("change", applyFilters);
+$("f-unreviewed").addEventListener("change", applyFilters);
+$("f-search").addEventListener("input", applyFilters);
+
+load();
+</script>
+</body>
+</html>

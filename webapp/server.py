@@ -35,7 +35,7 @@ import librosa
 import numpy as np
 import torch
 import torch.nn as nn
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import Body, FastAPI, File, Form, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -52,6 +52,10 @@ TEACHER_JSON = PROJECT_DIR / "app_assets" / "teacher_contours.json"
 VERIFY_HEAD_PATH = PROJECT_DIR / "results" / "binary_verify" / "production_verify_head.pth"
 ATTEMPTS_DIR = PROJECT_DIR / "app_assets" / "collected_attempts"
 ATTEMPTS_LOG = ATTEMPTS_DIR / "attempts_log.jsonl"
+BEN13_SEGMENTS_DIR = PROJECT_DIR / "data" / "ben13_segments"
+BEN13_SEGMENTS_MANIFEST = BEN13_SEGMENTS_DIR / "manifest.json"
+BEN13_SOURCE_DIR = PROJECT_DIR / "data" / "ben13"
+REVIEW_NOTES_PATH = BEN13_SEGMENTS_DIR / "review_notes.json"
 
 # audio constants — must match extract_features_v2.py
 SR = 22050
@@ -121,6 +125,73 @@ def get_teacher():
         with open(TEACHER_JSON, encoding="utf-8") as f:
             _state["teacher"] = json.load(f)
     return _state["teacher"]
+
+
+def get_ben13_source_index():
+    """{(type_name, order): source-clip manifest entry} -- for showing the
+    full original combo clip alongside a cut segment, so a reviewer can
+    judge the cut in context rather than hearing it in isolation."""
+    if "ben13_source_index" not in _state:
+        idx = {}
+        for type_dir in sorted(BEN13_SOURCE_DIR.iterdir()) if BEN13_SOURCE_DIR.exists() else []:
+            mpath = type_dir / "manifest.json"
+            if not mpath.exists():
+                continue
+            with open(mpath, encoding="utf-8") as f:
+                for e in json.load(f):
+                    idx[(type_dir.name, e["order"])] = e
+        _state["ben13_source_index"] = idx
+    return _state["ben13_source_index"]
+
+
+def load_review_notes() -> dict:
+    if not REVIEW_NOTES_PATH.exists():
+        return {}
+    with open(REVIEW_NOTES_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_review_note(clip_id: str, note: str, flag: str):
+    notes = load_review_notes()
+    if note or flag:
+        notes[clip_id] = {"note": note, "flag": flag}
+    else:
+        notes.pop(clip_id, None)
+    REVIEW_NOTES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(REVIEW_NOTES_PATH, "w", encoding="utf-8") as f:
+        json.dump(notes, f, ensure_ascii=False, indent=1)
+
+
+def get_review_items() -> list:
+    """Every Ben13 segment (Data_Prep/segment_ben13_clips.py, Milestone 1C)
+    plus its saved note/flag, if any. Read fresh each call -- these are small
+    local JSON files, not worth caching and risking staleness against notes
+    just saved a moment ago."""
+    if not BEN13_SEGMENTS_MANIFEST.exists():
+        return []
+    with open(BEN13_SEGMENTS_MANIFEST, encoding="utf-8") as f:
+        segments = json.load(f)
+    notes = load_review_notes()
+    source_idx = get_ben13_source_index()
+    items = []
+    for e in segments:
+        clip_id = Path(e["local_path"]).stem
+        source = source_idx.get((e["source_type"], e["source_order"]))
+        n = notes.get(clip_id, {})
+        items.append({
+            "clip_id": clip_id,
+            "taam": e["taam"],
+            "source_type": e["source_type"],
+            "source_order": e["source_order"],
+            "ctc_score": e["ctc_score"],
+            "duration": e["duration"],
+            "low_confidence": e["low_confidence"],
+            "source_text": source["text"] if source else None,
+            "source_text_sfaradi": source["textSfaradi"] if source else None,
+            "note": n.get("note", ""),
+            "flag": n.get("flag", ""),
+        })
+    return items
 
 
 # ------------------------------------------------------------ DSP helpers --
@@ -327,6 +398,56 @@ async def analyze(audio: UploadFile = File(...)):
                           "predictions": [{"taam": t, "prob": round(p, 3)}
                                           for t, p in top3]})
     return {"words": words}
+
+
+# ------------------------------------------------------- Ben13 review UI --
+# Internal QA tool (webapp/static/review.html), not part of the practice
+# app: browse every Ben13 segment cut by Data_Prep/segment_ben13_clips.py
+# (Milestone 1C) and record a note on each, so a reviewer isn't limited to
+# manually-sent one-off files.
+def safe_clip_id(clip_id: str) -> str:
+    return "".join(c for c in clip_id if c.isalnum() or c in "_-")
+
+
+@app.get("/api/review/items")
+def review_items():
+    return get_review_items()
+
+
+@app.get("/api/review/audio/{clip_id}")
+def review_audio(clip_id: str):
+    clip_id = safe_clip_id(clip_id)
+    for e in get_review_items():
+        if e["clip_id"] == clip_id:
+            for type_dir in BEN13_SEGMENTS_DIR.iterdir() if BEN13_SEGMENTS_DIR.exists() else []:
+                p = type_dir / f"{clip_id}.wav"
+                if p.exists():
+                    return FileResponse(p, media_type="audio/wav")
+    return {"error": "clip not found"}
+
+
+@app.get("/api/review/source_audio/{clip_id}")
+def review_source_audio(clip_id: str):
+    """The full original combo clip a segment was cut from -- context for
+    judging whether the cut point itself was right."""
+    clip_id = safe_clip_id(clip_id)
+    for e in get_review_items():
+        if e["clip_id"] == clip_id:
+            source = get_ben13_source_index().get((e["source_type"], e["source_order"]))
+            if source:
+                p = PROJECT_DIR / source["local_path"]
+                if p.exists():
+                    return FileResponse(p, media_type="audio/mpeg")
+    return {"error": "source clip not found"}
+
+
+@app.post("/api/review/note")
+def review_note(payload: dict = Body(...)):
+    clip_id = safe_clip_id(payload.get("clip_id", ""))
+    if not clip_id:
+        return {"error": "missing clip_id"}
+    save_review_note(clip_id, payload.get("note", ""), payload.get("flag", ""))
+    return {"ok": True}
 
 
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
