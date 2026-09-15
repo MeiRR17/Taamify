@@ -104,6 +104,97 @@ def spec_augment(x, freq_mask_param=15, time_mask_param=15,
     return y
 
 
+def pitch_shift_augment(x, max_bins=int(os.environ.get('TAAMIFY_PITCHBINS', '8'))):
+    """Shift each sample along the mel (frequency) axis — an approximation of
+    transposing the voice.
+
+    Why this exists: the entire corpus is adult male ba'alei kri'ah, and the
+    product's user is a bar-mitzvah-age learner whose voice sits far higher.
+    The claim under test (user's, 2026-09-09) is that the model can be taught
+    to handle a child's voice WITHOUT ever hearing one. On a mel scale the
+    frequency axis is logarithmic, so a constant shift in bins is close to a
+    constant ratio in Hz, i.e. a transposition — which makes this a cheap,
+    direct test of that claim rather than an argument about it.
+
+    Note this moves formants along with f0, so it is not a perfect voice
+    conversion; it tests robustness to register, which is the part of the
+    disagreement that is actually measurable here.
+    """
+    B, C, H, W = x.shape
+    y = torch.empty_like(x)
+    floor = x.amin(dim=(1, 2, 3), keepdim=True)
+    for i in range(B):
+        k = int(np.random.randint(-max_bins, max_bins + 1))
+        if k == 0:
+            y[i] = x[i]; continue
+        y[i] = torch.roll(x[i], shifts=k, dims=1)
+        if k > 0:
+            y[i, :, :k, :] = floor[i]
+        else:
+            y[i, :, k:, :] = floor[i]
+    return y
+
+
+def noise_augment(x, max_snr_db=float(os.environ.get('TAAMIFY_NOISE_SNR', '20')),
+                  p=0.5):
+    """Add broadband noise to a random half of each batch, at a random SNR
+    down to max_snr_db.
+
+    Every recording in this corpus is studio-clean: Ben13 is a produced
+    teaching product, and the readers were recorded for publication. The
+    product, though, runs on a laptop or phone microphone in a room with a
+    fan, a sibling, and a street outside. Nothing in training has ever
+    represented that, so robustness to it is completely unmeasured. On a
+    mel-dB spectrogram, additive noise is a floor that lifts the quiet bins
+    while leaving the loud ones nearly untouched, which is what this
+    approximates.
+    """
+    y = x.clone()
+    B = x.shape[0]
+    sel = torch.rand(B, device=x.device) < p
+    if not sel.any():
+        return y
+    # work in the dB domain the features already live in
+    lo = x.amin(dim=(1, 2, 3), keepdim=True)
+    hi = x.amax(dim=(1, 2, 3), keepdim=True)
+    snr = torch.rand(B, 1, 1, 1, device=x.device) * max_snr_db
+    floor = lo + (hi - lo) * (snr / 60.0).clamp(0, 1)
+    noisy = torch.maximum(x, floor + torch.randn_like(x) * 0.15)
+    y[sel] = noisy[sel]
+    return y
+
+
+def time_stretch_augment(x, max_ratio=float(os.environ.get('TAAMIFY_TSTRETCH', '0.25'))):
+    """Randomly stretch/squeeze each sample along time, keeping width fixed.
+
+    Motivated by results/r1_wall/diagnosis.txt: R1 reads slower (0.94s median
+    word vs 0.86s) and separates its ta'amim by duration more than twice as
+    strongly as R8 (F=404 vs 130). A model trained on the other two readers
+    can therefore lean on a duration->class mapping that simply doesn't hold
+    on R1 -- a distribution shift, not noisy audio. Randomising tempo during
+    training attacks that directly: it makes absolute duration an unreliable
+    cue, so the model has to use spectral shape instead.
+
+    Complementary to (not the same as) features_v3_dnorm, which removes
+    duration from the input entirely -- this keeps duration but decorrelates
+    it from the label.
+    """
+    B, C, H, W = x.shape
+    y = torch.empty_like(x)
+    for i in range(B):
+        r = 1.0 + np.random.uniform(-max_ratio, max_ratio)
+        new_w = max(4, min(W, int(round(W * r))))
+        stretched = torch.nn.functional.interpolate(
+            x[i:i + 1], size=(H, new_w), mode="bilinear", align_corners=False)
+        if new_w >= W:
+            y[i] = stretched[0, :, :, :W]
+        else:
+            y[i, :, :, :new_w] = stretched[0]
+            y[i, :, :, new_w:] = x[i, :, :, new_w:].min()   # pad with that
+                                                            # sample's floor
+    return y
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 #  MODEL ARCHITECTURES
 # ═══════════════════════════════════════════════════════════════════════════
@@ -521,7 +612,8 @@ def load_data(data_dir: Path, device_type: str):
 
 def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler,
                 device, num_epochs=50, patience=10, use_specaugment=True,
-                use_amp=True):
+                use_amp=True, use_time_stretch=False, use_pitch_shift=False,
+                use_noise=False):
     """Train a model with full regularization pipeline."""
     early_stopping = EarlyStopping(patience=patience)
     scaler = GradScaler('cuda') if use_amp and device.type == 'cuda' else None
@@ -547,6 +639,12 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             inputs, labels = inputs.to(device), labels.to(device)
             if use_specaugment:
                 inputs = spec_augment(inputs)
+            if use_time_stretch:
+                inputs = time_stretch_augment(inputs)
+            if use_pitch_shift:
+                inputs = pitch_shift_augment(inputs)
+            if use_noise:
+                inputs = noise_augment(inputs)
 
             optimizer.zero_grad()
 
@@ -1126,6 +1224,9 @@ def run_experiment(model_name, args, data_tuple, device, results_dir):
         model, train_loader, val_loader, criterion, optimizer, scheduler,
         device, num_epochs=args.epochs, patience=args.patience,
         use_specaugment=args.specaugment, use_amp=args.amp,
+        use_time_stretch=args.time_stretch,
+        use_pitch_shift=args.pitch_shift,
+        use_noise=args.noise,
     )
 
     # Evaluate on validation set
@@ -1209,6 +1310,14 @@ def main():
                              '--loss focal.')
     parser.add_argument('--no-specaugment', action='store_true',
                         help='Disable SpecAugment')
+    parser.add_argument('--noise', action='store_true',
+                        help='Add broadband noise to half of each batch. The whole corpus is studio-clean while the product runs on a laptop mic in a noisy room (see noise_augment)')
+    parser.add_argument('--pitch-shift', action='store_true',
+                        help='Transpose each training sample along the mel axis, so the '
+                             'model stops depending on the register of the adult male '
+                             'voices that make up the whole corpus (see pitch_shift_augment)')
+    parser.add_argument('--time-stretch', action='store_true',
+                        help='Randomise tempo per sample during training so absolute duration stops being a reliable class cue (see results/r1_wall/diagnosis.txt: R1 reads slower and separates its ta'"'"'amim by duration twice as strongly as R8, so a model trained on the others leans on a mapping that does not hold on R1)')
     parser.add_argument('--no-amp', action='store_true',
                         help='Disable mixed precision (AMP, CUDA only)')
     parser.add_argument('--tag', default='',

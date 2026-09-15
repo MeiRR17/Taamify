@@ -33,6 +33,22 @@ FEATURES_DIR = Path(os.environ.get("TAAMIFY_FEATURES",
 CACHE_DIR = Path("/tmp")
 OUT_DIR = PROJECT_DIR / "results" / "sequence_model"
 
+# This script had no seeding at all, so repeated runs drew a different random
+# init every time and no result here was reproducible -- which also made any
+# "seed spread" meaningless, because the seeds were neither controlled nor
+# recorded. Same TAAMIFY_SEED convention as 10_train_pipeline.py.
+SEED = int(os.environ.get("TAAMIFY_SEED", "42"))
+
+
+def set_seeds(seed: int = SEED):
+    import random as _random
+    _random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)          # also seeds MPS
+
+
+set_seeds(SEED)
+
 # Near-deterministic tier from results/v3_comparison/ben13_grammar_associations.md
 # -- Ben13-taught combinations independently confirmed as the dominant real
 # transition (>=50%) in aligned_dataset_merged.json, not just Ben13's claim.

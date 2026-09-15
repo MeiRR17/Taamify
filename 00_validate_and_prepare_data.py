@@ -63,8 +63,13 @@ def validate_sample(spec: np.ndarray) -> str | None:
 
 
 def load_readers(readers: list) -> tuple:
-    """Load and concatenate all readers. Returns (X, taam_labels, reader_labels)."""
-    X_parts, taams, reader_ids = [], [], []
+    """Load and concatenate all readers. Returns (X, taam_labels, reader_labels,
+    align_methods) -- the last one is each word's 'align' meta field
+    (e.g. 'verse_ctc' vs 'stored', the Whisper-boundary fallback that never
+    got replaced by verse-level alignment), for FINDINGS.md §8's pending
+    boundary-quality ablation: is the R1 wall partly a boundary-quality
+    artifact, not purely a voice/generalization one?"""
+    X_parts, taams, reader_ids, aligns, parashot = [], [], [], [], []
     for reader in readers:
         x_path = FEATURES_DIR / f"{reader}_X.npy"
         m_path = FEATURES_DIR / f"{reader}_meta.json"
@@ -78,10 +83,13 @@ def load_readers(readers: list) -> tuple:
         X_parts.append(X)
         taams.extend(m['taam'] for m in meta)
         reader_ids.extend([reader] * len(X))
+        aligns.extend(m.get('align', 'unknown') for m in meta)
+        parashot.extend(str(m.get('parasha', '?')) for m in meta)
         print(f"  {reader}: {len(X)} samples")
     if not X_parts:
         raise SystemExit("No feature files found — run Data_Prep/extract_features_v2.py first")
-    return np.concatenate(X_parts), np.array(taams), np.array(reader_ids)
+    return (np.concatenate(X_parts), np.array(taams), np.array(reader_ids),
+            np.array(aligns), np.array(parashot))
 
 
 def select_classes(taams: np.ndarray, num_classes: int | None) -> list:
@@ -94,7 +102,7 @@ def select_classes(taams: np.ndarray, num_classes: int | None) -> list:
     return selected
 
 
-def validate_and_filter(X, taams, reader_ids, class_names):
+def validate_and_filter(X, taams, reader_ids, class_names, parashot=None):
     """Keep only valid samples of selected classes."""
     print(f"\n{'='*60}\nVALIDATING {len(X)} SPECTROGRAMS\n{'='*60}")
     class_set = set(class_names)
@@ -113,6 +121,9 @@ def validate_and_filter(X, taams, reader_ids, class_names):
         for reason, n in reasons.most_common():
             print(f"  rejected {reason}: {n}")
     keep_idx = np.array(keep_idx)
+    if parashot is not None:
+        return (X[keep_idx], taams[keep_idx], reader_ids[keep_idx],
+                parashot[keep_idx], reasons)
     return X[keep_idx], taams[keep_idx], reader_ids[keep_idx], reasons
 
 
@@ -129,6 +140,65 @@ def make_random_splits(X, y, test_size, val_size, seed=42):
     val_ratio = val_size / (1 - test_size)
     X_train, X_val, y_train, y_val = train_test_split(
         X_tv, y_tv, test_size=val_ratio, random_state=seed, stratify=y_tv)
+    return X_train, y_train, X_val, y_val, X_test, y_test
+
+
+def balance_by_reader(X, y, reader_ids, rng_seed=42):
+    """Cap every reader to the size of the smallest, so no single voice
+    dominates the training pool.
+
+    --max-train stratifies by CLASS but not by READER, which quietly confounds
+    any 'does adding reader Z help?' experiment: BEN13R alone is 53.5% of the
+    available pool, so a 40,000-sample cap draws ~21,000 words from one voice
+    and the model can improve at recognising that voice while getting worse at
+    everyone else. Balancing separates 'this corpus is bad' from 'this corpus
+    is too big a share of the mix', which are different findings with different
+    fixes."""
+    import numpy as _np
+    rng = _np.random.default_rng(rng_seed)
+    readers = _np.unique(reader_ids)
+    smallest = min((reader_ids == r).sum() for r in readers)
+    keep = []
+    for r in readers:
+        idx = _np.flatnonzero(reader_ids == r)
+        keep.append(rng.choice(idx, size=smallest, replace=False))
+    keep = _np.sort(_np.concatenate(keep))
+    print(f"  balanced to {smallest:,} per reader "
+          f"({len(readers)} readers, {len(keep):,} total)")
+    return X[keep], y[keep], reader_ids[keep]
+
+
+
+def make_parasha_splits(X, y, parashot, n_test, val_size=0.15, seed=42,
+                        draw_seed=None):
+    """Hold out whole parashot, not random words.
+
+    Ben13 is ONE voice. A random word-level split therefore leaks badly: the
+    word before and the word after the test word come from the same verse, the
+    same recording session, the same microphone and room, and often the same
+    breath. A model can score well on that without having learned anything
+    transferable. Holding out whole parashot means the test words come from
+    audio the model never touched, which is the honest question for a
+    single-voice corpus -- and the closest proxy available until a second
+    Sephardic-Jerusalem voice is recorded.
+    """
+    # draw_seed picks WHICH parashot are held out, separately from the
+    # train/val shuffle. Without it every '--tag drawN' run held out the
+    # identical 8 parashot and three 'independent' draws returned the same
+    # number to four decimals -- a test that measured nothing.
+    rng = np.random.default_rng(seed if draw_seed is None else draw_seed)
+    uniq = np.unique(parashot)
+    if len(uniq) <= n_test + 1:
+        raise SystemExit(f"only {len(uniq)} parashot present; cannot hold out {n_test}")
+    test_p = set(rng.choice(uniq, size=n_test, replace=False).tolist())
+    test_mask = np.isin(parashot, list(test_p))
+    X_test, y_test = X[test_mask], y[test_mask]
+    X_rest, y_rest = X[~test_mask], y[~test_mask]
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_rest, y_rest, test_size=val_size, random_state=seed, stratify=y_rest)
+    print(f"\nParasha split: {n_test} of {len(uniq)} parashot held out "
+          f"({sorted(test_p)})")
+    print(f"  train {len(X_train):,}  val {len(X_val):,}  test {len(X_test):,}")
     return X_train, y_train, X_val, y_val, X_test, y_test
 
 
@@ -218,27 +288,97 @@ def main():
     parser.add_argument('--readers', nargs='+', default=['R1', 'R2', 'R3', 'R4', 'R5'])
     parser.add_argument('--num-classes', type=int, default=11)
     parser.add_argument('--all-classes', action='store_true')
-    parser.add_argument('--split', choices=['random', 'loro'], default='random')
+    parser.add_argument('--split', choices=['random', 'loro', 'parasha'], default='random')
+    parser.add_argument('--parasha-seed', type=int, default=None,
+                        help='which parashot to hold out; vary it to get genuinely '
+                             'independent draws (see make_parasha_splits)')
+    parser.add_argument('--test-parashot', type=int, default=8,
+                        help="parasha split: how many whole parashot to hold out. "
+                             "With a single-voice corpus like Ben13 a random word "
+                             "split leaks: neighbouring words of the same verse, "
+                             "recorded in the same session under identical "
+                             "acoustics, land on both sides. Holding out whole "
+                             "parashot is the honest test of whether the model "
+                             "learned the ta'amim or the recordings.")
     parser.add_argument('--holdout', default=None, help='reader to hold out (loro)')
     parser.add_argument('--test-size', type=float, default=0.15)
     parser.add_argument('--val-size', type=float, default=0.15)
     parser.add_argument('--max-train', type=int, default=None,
                         help='cap the training set (loro), so folds with very '
                              'different training sizes can be compared')
+    parser.add_argument('--balance-readers', action='store_true',
+                        help='cap every reader to the size of the smallest '
+                             'before splitting, so no single voice dominates '
+                             '(see balance_by_reader)')
+    parser.add_argument('--min-per-class', type=int, default=10,
+                        help='drop classes with fewer than this many samples. '
+                             'A stratified split needs at least 2 per class and '
+                             'realistically ~10 to put any in train/val/test, so '
+                             '--all-classes otherwise dies on the long tail: '
+                             'BEN13R holds exactly 1 Yerach_Ben_Yomo and 1 '
+                             'Qarney_Para, and sklearn refuses to stratify that. '
+                             'Dropping them is honest -- a class with one example '
+                             'cannot be learned or measured either way.')
+    parser.add_argument('--exclude-align', nargs='+', default=None,
+                        help="drop words whose meta 'align' field is in this list "
+                             "before class selection/splitting -- e.g. "
+                             "--exclude-align stored to drop the Whisper-boundary "
+                             "fallback rows that verse-level CTC never replaced "
+                             "(FINDINGS.md §8's pending boundary-quality ablation). "
+                             "R1 has the highest 'stored' share of the three main "
+                             "readers (36% vs R2's 23%/R8's 14%), so this is a "
+                             "direct test of whether R1's wall is partly boundary "
+                             "noise rather than purely voice/generalization.")
+    parser.add_argument('--tag', default='',
+                        help='suffix for the output dir. REQUIRED when the same '
+                             'split is prepared from a different TAAMIFY_FEATURES '
+                             'source: the scenario name is derived from '
+                             'split/holdout/classes only, so without a tag a '
+                             'stressed-window or speaker-normalised run silently '
+                             'overwrites the word-window one of the same name, and '
+                             'anything trained afterwards reads the wrong features '
+                             'under the right-looking directory name.')
     args = parser.parse_args()
 
     if args.split == 'loro' and not args.holdout:
         parser.error("--split loro requires --holdout READER")
 
     print(f"{'='*60}\nLOADING READERS\n{'='*60}")
-    X, taams, reader_ids = load_readers(args.readers)
+    X, taams, reader_ids, aligns, parashot = load_readers(args.readers)
+
+    if args.exclude_align:
+        keep = ~np.isin(aligns, args.exclude_align)
+        print(f"\n--exclude-align {args.exclude_align}: dropping "
+              f"{(~keep).sum()} of {len(keep)} words "
+              f"({(~keep).sum() / len(keep) * 100:.1f}%)")
+        X, taams, reader_ids = X[keep], taams[keep], reader_ids[keep]
 
     num_classes = None if args.all_classes else args.num_classes
     class_names = select_classes(taams, num_classes)
     label_to_idx = {name: i for i, name in enumerate(class_names)}
 
-    X, taams, reader_ids, reasons = validate_and_filter(X, taams, reader_ids, class_names)
+    if args.min_per_class > 1:
+        from collections import Counter as _C
+        counts = _C(taams)
+        too_small = [c for c in class_names
+                     if counts.get(c, 0) < args.min_per_class]
+        if too_small:
+            print(f"\nDropping {len(too_small)} class(es) below "
+                  f"--min-per-class={args.min_per_class}: "
+                  + ", ".join(f"{c}({counts.get(c,0)})" for c in too_small))
+            class_names = [c for c in class_names if c not in too_small]
+            label_to_idx = {name: i for i, name in enumerate(class_names)}
+
+    X, taams, reader_ids, parashot, reasons = validate_and_filter(
+        X, taams, reader_ids, class_names, parashot)
     y = np.array([label_to_idx[t] for t in taams], dtype=np.int64)
+
+    if args.balance_readers:
+        print("\nBalancing readers so no single voice dominates:")
+        keep_before = len(X)
+        X, y, reader_ids = balance_by_reader(X, y, reader_ids)
+        if len(X) != keep_before:
+            parashot = None   # indices no longer line up; parasha split is off
 
     print(f"\nNormalizing {len(X)} samples (per-sample zero-mean unit-var)")
     X = normalize_per_sample(X)
@@ -247,12 +387,23 @@ def main():
     if args.split == 'random':
         splits = make_random_splits(X, y, args.test_size, args.val_size)
         scenario = f"random_top{len(class_names)}"
+    elif args.split == 'parasha':
+        if parashot is None:
+            raise SystemExit("--split parasha needs per-word parasha labels "
+                             "(and is incompatible with --balance-readers)")
+        splits = make_parasha_splits(X, y, parashot, args.test_parashot,
+                                     args.val_size, draw_seed=args.parasha_seed)
+        scenario = f"parasha{args.test_parashot}_top{len(class_names)}"
     else:
         splits = make_loro_splits(X, y, reader_ids, args.holdout, args.val_size,
                                   max_train=args.max_train)
         scenario = f"loro_{args.holdout}_top{len(class_names)}"
         if args.max_train:
             scenario += f"_cap{args.max_train}"
+
+    # keeps feature-source variants in separate dirs -- see --tag's help
+    if args.tag:
+        scenario += f"_{args.tag}"
 
     X_train, y_train, X_val, y_val, X_test, y_test = splits
     print(f"\nSplit: train {len(X_train)}, val {len(X_val)}, test {len(X_test)}")
@@ -271,6 +422,7 @@ def main():
         'class_names': class_names,
         'label_to_idx': label_to_idx,
         'num_classes': len(class_names),
+        'exclude_align': args.exclude_align,
         'input_shape': [1, N_MELS, MAX_FRAMES],
         'train_samples': len(X_train),
         'val_samples': len(X_val),
