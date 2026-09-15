@@ -600,6 +600,181 @@ as the cause of R7's extra accuracy loss. Both remain open. Tradition
 distance specifically stays ruled against, since the noise-robust measurement
 argues against it directly.
 
+## 9. Phrase-realignment and a fair wav2vec2 retry — both negative, honestly recorded
+
+Two ideas from the same conversation, tested the same day, both aimed at
+R1's ~47% LORO wall. Both came back negative on the question that mattered,
+each with a real finding buried inside the negative result.
+
+**Phrase-realignment** (`Data_Prep/realign_by_phrase.py`,
+`results/phrase_realign/SUMMARY.txt`): re-cut R1/R2/R8 into Ben13-style short
+phrases (splitting at disjunctive accents) and re-ran `align_verse()` on each
+short span instead of the whole verse, to see whether Ben13's short-span
+alignment — not voice diversity — explains why it scores so much higher alone
+(89.9%) than R1+R2+R8 combined (77.7%).
+
+| | random split, own reader | LORO, held-out reader's *original* alignment |
+|---|---|---|
+| R1 | 73.8% → 77.1% (**+3.3pt, real**) | 46.9% → 42.5% (**-4.4pt, real, wrong direction**) |
+| R2 | 79.4% → 83.0% (**+3.6pt, real**) | 82.8% → 72.2% (**-10.6pt, real**) |
+| R8 | 80.7% → 80.9% (noise) | 78.5% → 67.9% (**-10.6pt, real**) |
+| mean | — | 69.4% → 60.9% (**-8.5pt, real**) |
+
+Phrase-realignment genuinely tightens same-reader fit (real gain on 2 of 3
+readers) — consistent with the theory that short-span CTC is a better local
+alignment. But it makes cross-reader generalization *worse*, on every fold,
+by a wide and clearly-real margin. **R1's wall didn't move — it got worse.**
+Read plainly: whatever short-span alignment buys in local timing precision,
+it apparently lets the model lock onto reader-specific micro-timing detail
+that a longer, noisier whole-verse alignment doesn't expose as cleanly —
+tighter same-reader fit and worse cross-reader transfer are the same effect
+seen from two sides. Not investigated further this round; the two-sided
+pattern (helps in-distribution, hurts out-of-distribution) is itself the
+finding, and is consistent with this project's general lesson that a metric
+computed on the training reader's own distribution can point the wrong
+direction on the metric that actually matters (LORO).
+
+**Fair wav2vec2 retry** (`Data_Prep/extract_wav2vec_meanpool.py` +
+`train_wav2vec_probe.py`, `results/wav2vec_probe/summary.json`): the earlier
+wav2vec2 attempt forced its 1024-dim hidden state through a PCA crush to 128
+dims to fit `DeepCNN`'s hardcoded input shape, scoring 22-27% — a plausible
+artifact of the crush, not necessarily of the representation. This retry
+mean-pools the same model's hidden states to a flat, uncrushed 1024-dim
+vector per word and trains a small standalone MLP probe on top, same LORO
+discipline, same top-11 classes.
+
+| fold | mel-spectrogram CNN (baseline) | wav2vec2 mean-pool probe |
+|---|---|---|
+| R1 | 46.9% | 29.9% |
+| R2 | 82.8% | 52.6% |
+| R8 | 78.5% | 48.0% |
+| mean | **69.4%** | **43.5%** |
+
+> **Correction (2026-09-09).** This table first went out with the baseline
+> mean written as 51.2% — that is the Milestone-0 *two-reader* number, not
+> the mean of the three folds shown above, which is 69.4%. The per-fold
+> figures were always right; only the mean row was mislabelled, and it made
+> wav2vec2 look far closer to the baseline than it is. The real gap is 25.9
+> points, not 7.7. Corrected here and on the dashboard.
+
+Removing the PCA crush recovers a lot of the earlier collapse (22-27% →
+43.5% mean) but the fair version still loses to the existing mel-spectrogram
+CNN on every fold, by 17-30 points. The hypothesis behind trying this at all —
+that a self-supervised encoder trained across many speakers would suppress
+speaker identity relative to melodic/prosodic content, and so narrow the
+unseen-reader gap — is not supported by this measurement. Two honest caveats
+on the negative result itself, not reasons to discount it: (1) mean-pooling
+across the whole word discards all temporal shape, which is exactly the
+signal DTW/melody-curve work (Milestones 8-9) established carries real
+class-discriminating information — a time-aware probe (small transformer or
+BiLSTM over the frame sequence, instead of one pooled vector) is a
+meaningfully different and untested question; (2) the probe itself is a
+single small MLP with no architecture search, unlike `DeepCNN`'s several
+tuning passes. Recorded as: **wav2vec2 mean-pooled embeddings, as tested, do
+not beat the existing mel-spectrogram CNN on this project's real metric** —
+not "wav2vec2 cannot work here."
+
+## 10. The R1 wall: a corpus measurement, and the first intervention that moves it
+
+Everything before this treated R1's wall as unexplained. `Data_Prep/
+diagnose_r1_wall.py` measures R1's corpus against R2's and R8's using no
+model at all, so nothing here can be blamed on training:
+
+| reader | median word duration | between-class duration separability (one-way F on log duration) |
+|---|---|---|
+| R1 | 0.940 s | **404.4** |
+| R2 | 0.860 s | 195.2 |
+| R8 | 0.860 s | 130.2 |
+
+**This reverses the standing assumption.** R1 is not the noisy reader — on
+the one class-discriminating property measurable without a model, R1's
+ta'amim are separated *more than twice as strongly* as R8's. R1 simply reads
+slower, and encodes more of the distinction in timing. So a model trained on
+R2+R8 learns their duration→class mapping and then meets a reader whose
+whole timing scale is stretched. That is **distribution shift, not bad
+audio** — and unlike "something about R1's voice," it is directly testable.
+
+Class balance was checked at the same time and ruled out: all three readers
+match within 1 point on every one of the top-11 classes.
+
+### What actually moved it, measured against real seed noise
+
+Four seeds of the identical R1 baseline give **47.65% ± 0.76pt**, so a
+2-SD bar is ±1.5 points. Every intervention run overnight, same fold, same
+data:
+
+| intervention | R1 accuracy | vs baseline | verdict |
+|---|---|---|---|
+| **time-stretch augmentation** | **49.78%** | **+2.1pt (+2.8 SD)** | **real** |
+| higher LR (0.002) | 48.52% | +0.9pt (+1.1 SD) | noise |
+| duration-normalised features | 48.00% | +0.35pt (+0.5 SD) | noise |
+| no SpecAugment | 47.36% | −0.3pt | noise |
+| drop `stored` boundaries | 46.88% | −0.8pt | noise |
+| dnorm + time-stretch together | 46.81% | −0.8pt | noise |
+
+**Time-stretch augmentation** (`10_train_pipeline.py --time-stretch`:
+randomly stretch/squeeze each training sample ±25% along time) is the first
+thing in this project's history to move R1 by more than seed noise. It is a
+small effect — 2 points, not 20 — but it is real, and it is exactly the
+intervention the diagnosis predicts: making absolute duration an unreliable
+cue forces the model onto spectral shape instead.
+
+Two things worth noting about the *shape* of that result. First, **removing
+duration entirely (dnorm) does nothing, while randomising it helps.** That
+argues the signal isn't "duration is bad" but "duration is real and useful,
+just miscalibrated across readers" — destroy it and you lose as much as you
+gain; decorrelate it from the label and the model keeps the spectral part.
+Second, **combining the two cancels the gain** — consistent with the same
+reading, since dnorm has already removed what time-stretch was supposed to
+be perturbing.
+
+Multi-seed confirmation of the time-stretch result, a dose-response sweep
+(±15% / ±40%), and matched same-day baselines for R2/R8 are queued.
+
+### Boundary quality is not R1's problem
+
+The ablation FINDINGS.md §8 had listed as pending is now run
+(`--exclude-align stored`, dropping the Whisper-fallback boundaries that
+verse-level CTC never replaced — 36% of R1's rows, 23% of R2's, 14% of R8's):
+
+| fold | baseline | `stored` dropped | delta |
+|---|---|---|---|
+| R1 | 46.6% | 46.9% | +0.3 (noise) |
+| R2 | 82.8% | 84.7% | +1.9 |
+| R8 | 78.5% | 80.0% | +1.5 |
+
+Dropping the weaker boundaries buys a mild, consistent gain on R2/R8 and
+**nothing on R1 — the reader that has by far the most of them.** If boundary
+noise were driving R1's wall, R1 is exactly where this should have paid off.
+It didn't. Boundary quality is a small real effect and not the explanation.
+
+## 11. wav2vec2, third attempt: temporal shape was the missing piece (still loses)
+
+§9's mean-pool probe came with a stated caveat — pooling across the word
+throws away the temporal shape that Milestones 8-9 showed carries real
+class information. Tested directly: `extract_wav2vec_sequence.py` keeps a
+30-frame × 1024 sequence per word, and `train_wav2vec_seq_probe.py` puts a
+BiLSTM + learned attention pooling on top.
+
+| | R1 | R2 | R8 | mean |
+|---|---|---|---|---|
+| mel-spectrogram CNN (baseline) | 46.9% | 82.8% | 78.5% | **69.4%** |
+| wav2vec2, PCA-crushed (1st try) | 22.5% | 27.1% | 26.0% | 25.2% |
+| wav2vec2, mean-pooled (2nd try) | 29.9% | 52.6% | 48.0% | 43.5% |
+| **wav2vec2, sequence + attention (3rd)** | 38.0% | 71.9% | 65.7% | **58.6%** |
+
+**The caveat was right and worth +15.1 points.** Each fix to how wav2vec2's
+representation is consumed recovers a large chunk: un-crushing bought +18.3,
+keeping temporal shape bought another +15.1. That is strong evidence the
+earlier collapses were about the consumption, not the encoder.
+
+**And it still loses to the mel-spectrogram CNN by 10.8 points**, on every
+fold. Three increasingly fair attempts, same direction each time, still
+behind. Position: wav2vec2 frozen-feature probing does not beat this
+project's existing pipeline; the remaining untested variant is fine-tuning
+the encoder end-to-end rather than probing frozen features, which is a
+materially different (and much more expensive) experiment.
+
 ## 8. Open
 
 - **A fourth reader, genuinely chanted.** Mechon Mamre has all 187 Torah

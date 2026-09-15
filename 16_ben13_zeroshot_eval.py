@@ -37,7 +37,7 @@ PROJECT_DIR = Path(__file__).parent
 SEGMENTS = PROJECT_DIR / "data" / "ben13_segments" / "manifest.json"
 OUT = PROJECT_DIR / "results" / "v3_comparison" / "ben13_zeroshot_eval.md"
 
-CNN_CHECKPOINT = PROJECT_DIR / "results" / "random_top11" / "deep_cnn" / "deep_cnn_best.pth"
+CNN_CHECKPOINT = PROJECT_DIR / "results" / "random_top21" / "deep_cnn" / "deep_cnn_best.pth"
 VERIFY_CHECKPOINT = PROJECT_DIR / "results" / "binary_verify" / "production_verify_head.pth"
 
 SR = 22050
@@ -160,7 +160,7 @@ def main():
 
     all_mask = np.ones(len(Mp), dtype=bool)
     hc_mask = ~low_conf_pairs
-    results = [report(all_mask, "All 97 segments (194 pairs)"),
+    results = [report(all_mask, f"All {len(usable)} segments ({int(all_mask.sum())} pairs)"),
                report(hc_mask, f"High-confidence only ({int(hc_mask.sum()//2)} segments, "
                                 f"{int(hc_mask.sum())} pairs)")]
 
@@ -180,7 +180,7 @@ def main():
         "that appears nowhere in training.",
         "",
         f"**Scope**: {len(usable)}/{len(segments)} segments have a true class inside "
-        f"the production model's top-11 vocabulary; the other {len(segments) - len(usable)} "
+        f"the production model's vocabulary; the other {len(segments) - len(usable)} "
         f"({', '.join(excluded)}) have no slot in the verify-head's one-hot space and are "
         "excluded, not silently dropped. Siluk never appears (verse-final, doesn't occur "
         "mid-phrase in a combo clip). Same pairing convention as Milestone 3: every "
