@@ -1,20 +1,21 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he" dir="rtl">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Taamify — Ben13 segment review</title>
+<title>בדיקת קטעי טעמים — בן13</title>
 <link rel="stylesheet" href="style.css">
 <style>
   body { height: 100vh; overflow: hidden; }
   header { padding: 12px 20px; }
   header h1 { font-size: 18px; }
+  header .explain { font-size: 12.5px; color: var(--muted); margin-top: 3px; max-width: 70ch; line-height: 1.5; }
   .progress { font-size: 13px; color: var(--muted); }
 
-  .layout { display: flex; height: calc(100vh - 56px); }
+  .layout { display: flex; height: calc(100vh - 72px); }
 
-  /* ── sidebar ── */
-  .sidebar { width: 340px; flex-shrink: 0; border-right: 1px solid var(--border);
+  /* ── סרגל צד ── */
+  .sidebar { width: 340px; flex-shrink: 0; border-left: 1px solid var(--border);
              display: flex; flex-direction: column; background: var(--card); }
   .filters { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex;
              flex-direction: column; gap: 6px; }
@@ -29,27 +30,49 @@
     display: flex; align-items: center; gap: 8px; font-size: 13px;
   }
   .row:hover { background: var(--accent-soft); }
-  .row.active { background: var(--accent-soft); border-left: 3px solid var(--accent); }
+  .row.active { background: var(--accent-soft); border-right: 3px solid var(--accent); }
   .row .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--good); }
   .row .dot.low { background: var(--warn); }
   .row .main { flex: 1; min-width: 0; }
   .row .taam { font-weight: 600; }
   .row .meta { color: var(--muted); font-size: 11.5px; }
   .row .reviewed { color: var(--good); font-size: 14px; flex-shrink: 0; }
+  .row .stale-mark { color: var(--warn); font-size: 13px; flex-shrink: 0; }
 
-  /* ── detail pane ── */
+  .banner { border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px; line-height: 1.6; }
+  .banner.info { background: var(--accent-soft); border: 1px solid var(--accent); color: var(--ink, #333); }
+  .banner.warn { background: #faf3dd; border: 1px solid var(--warn); color: #6b5a12; }
+  .banner.label-issue { background: #f9e7e7; border: 1px solid var(--bad); color: #7a2323; }
+  .banner strong { display: block; margin-bottom: 3px; }
+  .banner .reconfirm-btn {
+    margin-top: 8px; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--warn);
+    background: #fff; color: #6b5a12; font-size: 12.5px; cursor: pointer; font-weight: 600;
+  }
+
+  .title-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+  .seph-label { font-size: 12px; color: var(--muted); }
+  .sephardi-input {
+    font-size: 15px; direction: rtl; border: 1px dashed var(--border); border-radius: 6px;
+    padding: 3px 8px; color: var(--muted); background: transparent; width: 140px;
+  }
+  .sephardi-input:focus { border-style: solid; border-color: var(--accent); outline: none; }
+  .sephardi-input::placeholder { color: var(--muted); font-style: italic; }
+  .sephardi-tag { font-size: 11px; color: var(--muted); }
+
+  /* ── חלונית פרטים ── */
   .detail { flex: 1; overflow-y: auto; padding: 24px 32px; max-width: 760px; }
   .detail h2 { font-size: 22px; margin-bottom: 4px; }
   .detail .sub { color: var(--muted); font-size: 13.5px; margin-bottom: 20px; }
   .field-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
   .field { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
-  .field .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 3px; }
+  .field .k { font-size: 10.5px; color: var(--muted); margin-bottom: 3px; }
   .field .v { font-size: 15px; font-weight: 600; }
   .field .v.low { color: var(--warn); }
   .player-block { margin-bottom: 18px; }
   .player-block .lbl { font-size: 12.5px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
   audio { width: 100%; }
-  .hebrew { font-size: 17px; direction: rtl; }
+  .src-text-lbl { font-size: 11.5px; color: var(--muted); margin-bottom: 4px; }
+  .hebrew { font-size: 19px; }
   textarea {
     width: 100%; min-height: 110px; padding: 10px 12px; border: 1px solid var(--border);
     border-radius: 8px; font-size: 14px; font-family: inherit; resize: vertical;
@@ -79,23 +102,31 @@
 <body>
 
 <header>
-  <div class="brand"><h1>Ben13 segment review</h1></div>
-  <div class="progress" id="progress">loading…</div>
+  <div class="brand"><h1>בדיקת קטעי טעמים — בן13</h1></div>
+  <div class="explain">
+    בן13 חילק קליפים לקטעים קטנים, אחד לכל טעם. הכלי הזה מציג כל קטע לצד השמע
+    המקורי המלא — תפקידך לוודא שהחיתוך תקין (לא נחתך מוקדם מדי / לא נדבק
+    למילה השכנה) ולסמן טוב / לא תקין / לא בטוח, עם הערה קצרה במידת הצורך.
+    <br><b>אם החיתוך שגוי או שהטקסט לא תואם למה שנשמע</b> — תקן אותו ידנית ב<a href="cut.html">עורך החיתוך</a>.
+  </div>
+  <div class="progress" id="progress">טוען…</div>
 </header>
 
 <div class="layout">
   <div class="sidebar">
     <div class="filters">
-      <select id="f-taam"><option value="">All ta'amim</option></select>
-      <label><input type="checkbox" id="f-lowconf"> Low-confidence only</label>
-      <label><input type="checkbox" id="f-unreviewed"> Unreviewed only</label>
-      <input type="text" id="f-search" placeholder="Search…">
+      <select id="f-taam"><option value="">כל הטעמים</option></select>
+      <label><input type="checkbox" id="f-lowconf"> רק ציון ביטחון נמוך (CTC)</label>
+      <label><input type="checkbox" id="f-unreviewed"> רק כאלה שעוד לא נבדקו</label>
+      <label><input type="checkbox" id="f-bad"> רק כאלה שסומנו בעבר "לא תקין"</label>
+      <label><input type="checkbox" id="f-stale" checked> קודם הערות ישנות (נחתך מחדש מאז הבדיקה)</label>
+      <input type="text" id="f-search" placeholder="חיפוש…">
     </div>
     <div class="list" id="list"></div>
   </div>
 
   <div class="detail" id="detail">
-    <div class="empty">Select a clip on the left.</div>
+    <div class="empty">בחר קטע מהרשימה כדי להתחיל.</div>
   </div>
 </div>
 
@@ -106,12 +137,27 @@ let filtered = [];
 let currentId = null;
 let dirty = false;
 
+const TYPE_LABELS = { "teamimtora": "תורה", "teamim-meg": "מגילות", "teamim-haf": "הפטרה" };
+const typeLabel = (t) => TYPE_LABELS[t] || t;
+const TAAM_HE = {
+  Etnachta: "אתנחתא", Segol: "סגול", Shalshelet: "שלשלת",
+  Zaqef_Qatan: "זקף קטן", Zaqef_Gadol: "זקף גדול", Tipecha: "טפחא",
+  Revia: "רביע", Zarqa: "זרקא", Pashta: "פשטא", Yetiv: "יתיב",
+  Tevir: "תביר", Geresh: "גרש", Geresh_Muqdam: "גרש מוקדם",
+  Gershayim: "גרשיים", Qarney_Para: "קרני פרה", Telisha_Gedola: "תלישא גדולה",
+  Telisha_Qetana: "תלישא קטנה", Pazer: "פזר גדול", Munach: "מונח",
+  Mahapakh: "מהפך", Mercha: "מרכא", Mercha_Kefula: "מרכא כפולה",
+  Darga: "דרגא", Qadma: "קדמא", Yerach_Ben_Yomo: "ירח בן יומו",
+  Siluk: "סוף פסוק (סילוק)",
+};
+const heName = (t) => TAAM_HE[t] || t.replace(/_/g, " ");
+
 async function load() {
   items = await fetch("/api/review/items").then(r => r.json());
-  const taams = [...new Set(items.map(i => i.taam))].sort();
+  const taams = [...new Set(items.map(i => i.taam))].sort((a, b) => heName(a).localeCompare(heName(b), "he"));
   taams.forEach(t => {
     const o = document.createElement("option");
-    o.value = t; o.textContent = t.replace(/_/g, " ");
+    o.value = t; o.textContent = heName(t);
     $("f-taam").appendChild(o);
   });
   applyFilters();
@@ -121,15 +167,21 @@ function applyFilters() {
   const taam = $("f-taam").value;
   const lowOnly = $("f-lowconf").checked;
   const unreviewedOnly = $("f-unreviewed").checked;
+  const badOnly = $("f-bad").checked;
+  const staleFirst = $("f-stale").checked;
   const q = $("f-search").value.trim().toLowerCase();
   filtered = items.filter(i =>
     (!taam || i.taam === taam) &&
     (!lowOnly || i.low_confidence) &&
     (!unreviewedOnly || !(i.note || i.flag)) &&
+    (!badOnly || i.flag === "bad") &&
     (!q || i.clip_id.toLowerCase().includes(q) || i.taam.toLowerCase().includes(q))
   );
-  // low-confidence first, then by ta'am, then by source order
+  // קודם הערות ישנות (אם מסומן), אחר כך בעיות תיוג ידועות, אחר כך ציון
+  // ביטחון נמוך, ואז לפי טעם וסדר מקור
   filtered.sort((a, b) =>
+    (staleFirst ? (b.stale_note - a.stale_note) : 0) ||
+    (!!b.label_note - !!a.label_note) ||
     (b.low_confidence - a.low_confidence) ||
     a.taam.localeCompare(b.taam) ||
     a.source_order - b.source_order);
@@ -139,7 +191,7 @@ function applyFilters() {
 
 function updateProgress() {
   const reviewed = items.filter(i => i.note || i.flag).length;
-  $("progress").textContent = `${reviewed} / ${items.length} reviewed · showing ${filtered.length}`;
+  $("progress").textContent = `${reviewed} / ${items.length} נבדקו · מוצגים ${filtered.length}`;
 }
 
 function renderList() {
@@ -148,10 +200,16 @@ function renderList() {
   filtered.forEach(item => {
     const row = document.createElement("div");
     row.className = "row" + (item.clip_id === currentId ? " active" : "");
+    const meta = item.kind === "single"
+      ? `${typeLabel(item.source_type)} #${item.source_order} · קליפ מבודד`
+      : `${typeLabel(item.source_type)} #${item.source_order} · ${item.duration} שנ' · ציון ${item.ctc_score}`;
     row.innerHTML =
       `<span class="dot ${item.low_confidence ? "low" : ""}"></span>` +
-      `<span class="main"><span class="taam">${item.taam.replace(/_/g, " ")}</span>` +
-      `<div class="meta">${item.source_type} #${item.source_order} · ${item.duration}s · score ${item.ctc_score}</div></span>` +
+      `<span class="main"><span class="taam">${heName(item.taam)}${item.sephardi_name ? ` <span class="sephardi-tag">(${item.sephardi_name})</span>` : ""}</span>` +
+      `<div class="meta">${meta}</div></span>` +
+      (item.stale_note ? `<span class="stale-mark" title="נחתך מחדש מאז שנכתבה ההערה">↻</span>` : "") +
+      (item.label_note ? `<span class="stale-mark" title="בעיית תיוג ידועה במקור">⚑</span>` : "") +
+      (item.whisper_silent ? `<span class="stale-mark" title="בדיקה אוטומטית: Whisper לא זיהה דיבור בקטע הזה">🔇</span>` : "") +
       (item.note || item.flag ? `<span class="reviewed">✓</span>` : "");
     row.addEventListener("click", () => selectClip(item.clip_id));
     list.appendChild(row);
@@ -167,37 +225,50 @@ function selectClip(clipId) {
   renderList();
 
   const idx = filtered.findIndex(i => i.clip_id === clipId);
+  const isSingle = item.kind === "single";
   $("detail").innerHTML = `
-    <h2>${item.taam.replace(/_/g, " ")}</h2>
-    <div class="sub">${item.clip_id} · ${item.source_type} #${item.source_order}</div>
-    <div class="field-grid">
-      <div class="field"><div class="k">CTC score</div><div class="v ${item.low_confidence ? "low" : ""}">${item.ctc_score}</div></div>
-      <div class="field"><div class="k">Duration</div><div class="v">${item.duration}s</div></div>
-      <div class="field"><div class="k">Confidence</div><div class="v ${item.low_confidence ? "low" : ""}">${item.low_confidence ? "Low" : "OK"}</div></div>
-      <div class="field"><div class="k">Position</div><div class="v">${idx + 1} / ${filtered.length}</div></div>
+    <div class="title-row">
+      <h2>${heName(item.taam)}</h2>
+      <span class="seph-label">שם ספרדי-ירושלמי:</span>
+      <input id="sephardi-box" class="sephardi-input" placeholder="הקלד כאן…" value="${item.sephardi_name || ""}">
     </div>
-    ${item.source_text ? `<div class="sub hebrew" style="margin-bottom:16px">${item.source_text_sfaradi || item.source_text}</div>` : ""}
+    <div class="sub">${item.clip_id} · ${typeLabel(item.source_type)} #${item.source_order}${isSingle ? " · קליפ מבודד (לא בוצע חיתוך)" : ` · <a href="cut.html">תקן את החיתוך של הקליפ הזה ידנית ←</a>`}</div>
+    <div class="field-grid">
+      <div class="field"><div class="k">ציון CTC</div><div class="v ${item.low_confidence ? "low" : ""}">${isSingle ? "—" : item.ctc_score}</div></div>
+      <div class="field"><div class="k">משך</div><div class="v">${isSingle ? "—" : item.duration + " שנ'"}</div></div>
+      <div class="field"><div class="k">רמת ביטחון</div><div class="v ${item.low_confidence ? "low" : ""}">${isSingle ? "לא רלוונטי" : (item.low_confidence ? "נמוכה" : "תקינה")}</div></div>
+      <div class="field"><div class="k">מיקום ברשימה</div><div class="v">${idx + 1} / ${filtered.length}</div></div>
+    </div>
+    ${item.label_note ? `<div class="banner label-issue"><strong>⚑ בעיית תיוג ידועה במקור</strong>${item.label_note}</div>` : ""}
+    ${item.whisper_silent ? `<div class="banner label-issue"><strong>🔇 בדיקה אוטומטית: לא זוהה דיבור בקטע הזה</strong>הרצתי תמלול (Whisper) על הקטע החתוך בבידוד, וזה חזר ריק — ייתכן שהקטע קצר/שקט מדי או שהחיתוך פספס את הדיבור לגמרי. לא הוכחה חד-משמעית (Whisper מחזיר ריק גם על מילים קצרות אמיתיות) — כדאי להאזין.</div>` : ""}
+    ${item.stale_note ? `<div class="banner warn"><strong>↻ נחתך מחדש מאז שנכתבה ההערה</strong>השמע של הקטע הזה השתנה (החיתוך הורץ מחדש עם תיקון). ההערה/הסימון למטה נכתבו לפני השינוי — כדאי להאזין שוב.<br><button class="reconfirm-btn" id="reconfirm-btn" type="button">עדיין תקף כמו שהוא — אשר מחדש</button> או פשוט האזן שוב, עדכן את ההערה/הסימון למטה ולחץ שמור.</div>` : ""}
+    ${item.source_text ? `<div class="src-text-lbl">הטקסט המקורי אצל בן13 (השם שהמדריך שר):</div><div class="sub hebrew" style="margin-bottom:16px">${(item.source_text_sfaradi || item.source_text).replace(/\xa0/g, " ")}</div>` : ""}
+    ${isSingle ? `
     <div class="player-block">
-      <div class="lbl">Cut segment (what the model would train/test on)</div>
+      <div class="lbl">הקליפ המלא — בן13 מספק את הטעם הזה כבר מבודד, לא בוצע חיתוך</div>
+      <audio controls src="/api/review/audio/${item.clip_id}"></audio>
+    </div>` : `
+    <div class="player-block">
+      <div class="lbl">הקטע החתוך (זה מה שהמודל ילמד/ייבחן עליו)</div>
       <audio controls src="/api/review/audio/${item.clip_id}"></audio>
     </div>
     <div class="player-block">
-      <div class="lbl">Full source clip (context for judging the cut)</div>
+      <div class="lbl">הקליפ המקורי המלא (הקשר לשיפוט החיתוך)</div>
       <audio controls src="/api/review/source_audio/${item.clip_id}"></audio>
-    </div>
+    </div>`}
     <div class="flag-row" id="flag-row"></div>
-    <textarea id="note-box" placeholder="Notes on this cut — e.g. bleeds into the neighboring word, silence included, wrong boundary…">${item.note || ""}</textarea>
+    <textarea id="note-box" placeholder="הערות על הקטע הזה — למשל: זולג למילה השכנה, נחתך מוקדם מדי, גבול שגוי…">${item.note || ""}</textarea>
     <div class="save-row">
-      <button id="save-btn">Save</button>
+      <button id="save-btn">שמור</button>
       <span class="status" id="save-status"></span>
     </div>
     <div class="nav-row">
-      <button id="prev-btn">← Previous</button>
-      <button id="next-btn">Next →</button>
+      <button id="prev-btn">הקודם</button>
+      <button id="next-btn">הבא</button>
     </div>
   `;
 
-  const flags = [["good", "Cut looks right"], ["bad", "Cut is wrong"], ["unsure", "Unsure"]];
+  const flags = [["good", "החיתוך תקין"], ["bad", "החיתוך שגוי"], ["unsure", "לא בטוח"]];
   const flagRow = $("flag-row");
   let currentFlag = item.flag || "";
   flags.forEach(([val, label]) => {
@@ -218,6 +289,22 @@ function selectClip(clipId) {
   $("save-btn").addEventListener("click", () => saveCurrentNote(true));
   $("prev-btn").addEventListener("click", () => step(-1));
   $("next-btn").addEventListener("click", () => step(1));
+
+  const sephBox = $("sephardi-box");
+  sephBox.addEventListener("change", () => saveSephardiName(item.taam, sephBox.value.trim()));
+
+  const reconfirmBtn = $("reconfirm-btn");
+  if (reconfirmBtn) reconfirmBtn.addEventListener("click", () => saveCurrentNote(true));
+}
+
+async function saveSephardiName(taam, name) {
+  await fetch("/api/review/sephardi_name", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ taam, name }),
+  });
+  // כל הקטעים מאותה מחלקה מקבלים את השם, לא רק הקטע הנוכחי
+  items.forEach(i => { if (i.taam === taam) i.sephardi_name = name; });
+  renderList();
 }
 
 function step(delta) {
@@ -236,12 +323,15 @@ async function saveCurrentNote(showStatus) {
     body: JSON.stringify({ clip_id: item.clip_id, note, flag: item.flag || "" }),
   });
   item.note = note;
+  item.stale_note = false;
   dirty = false;
   updateProgress();
   renderList();
+  const banner = document.querySelector(".banner.warn");
+  if (banner) banner.remove();
   if (showStatus) {
     const s = $("save-status");
-    if (s) { s.textContent = "Saved ✓"; setTimeout(() => { if (s) s.textContent = ""; }, 1500); }
+    if (s) { s.textContent = "נשמר ✓"; setTimeout(() => { if (s) s.textContent = ""; }, 1500); }
   }
 }
 
@@ -254,6 +344,8 @@ document.addEventListener("keydown", (e) => {
 $("f-taam").addEventListener("change", applyFilters);
 $("f-lowconf").addEventListener("change", applyFilters);
 $("f-unreviewed").addEventListener("change", applyFilters);
+$("f-bad").addEventListener("change", applyFilters);
+$("f-stale").addEventListener("change", applyFilters);
 $("f-search").addEventListener("input", applyFilters);
 
 load();

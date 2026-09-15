@@ -56,6 +56,11 @@ BEN13_SEGMENTS_DIR = PROJECT_DIR / "data" / "ben13_segments"
 BEN13_SEGMENTS_MANIFEST = BEN13_SEGMENTS_DIR / "manifest.json"
 BEN13_SOURCE_DIR = PROJECT_DIR / "data" / "ben13"
 REVIEW_NOTES_PATH = BEN13_SEGMENTS_DIR / "review_notes.json"
+SEPHARDI_NAMES_PATH = BEN13_SEGMENTS_DIR / "sephardi_names.json"
+MANUAL_CUTS_PATH = BEN13_SEGMENTS_DIR / "manual_cuts.json"
+WHISPER_CROSSCHECK_PATH = BEN13_SEGMENTS_DIR / "whisper_crosscheck.json"
+ACOUSTIC_CHECK_PATH = BEN13_SEGMENTS_DIR / "acoustic_check.json"
+BEN13_READING_META = PROJECT_DIR / "features_v3_word" / "BEN13R_meta.json"
 
 # audio constants — must match extract_features_v2.py
 SR = 22050
@@ -76,7 +81,21 @@ def get_model():
             "tp", PROJECT_DIR / "10_train_pipeline.py")
         tp = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(tp)
-        ckpt_path = PROJECT_DIR / "results/random_top11/deep_cnn/deep_cnn_best.pth"
+        # 21 classes, not the original top-11. The 11-class model left 7.6% of
+        # Torah words (5,243 of 68,613) with a ta'am the app simply could not
+        # verify -- roughly 1 in 13 words a learner clicks. Trading a little
+        # top-1 accuracy (78% -> 68.9% on a 21-way problem, which is a harder
+        # problem, not a worse model) for coverage is the right call here,
+        # because Stage A (the binary verify the product actually uses) got
+        # *better*, not worse: 94.6% val vs 94.0%.
+        # Ben13-only Torah model. The previous checkpoint was trained on the
+        # three YouTube readers; measured head-to-head on the identical task,
+        # adding those 80,285 words LOWERED accuracy by 4.3 points -- noisy
+        # alignment does not average out, it smears over the clean data.
+        # 87.9% on a random split, 86.9% with eight whole parashot held out
+        # (the honest number for a single-voice corpus), and the verify head
+        # trained on THIS checkpoint's embedding space scores 97.5%.
+        ckpt_path = PROJECT_DIR / "results/random_top21_torahship/deep_cnn/deep_cnn_best.pth"
         ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
         model = tp.MODEL_REGISTRY[ckpt["architecture"]](
             num_classes=len(ckpt["class_names"]))
@@ -127,6 +146,93 @@ def get_teacher():
     return _state["teacher"]
 
 
+def get_melody_curves():
+    """Data_Prep/extract_melody_curves.py's output: real pitch contours
+    (librosa.pyin, semitone-normalised, time-normalised to 60 points) for
+    many independent words per ta'am across R1/R2/R8 -- so a reader can
+    SEE whether a class's melody is actually stable, the same kind of
+    check as Ben-Shalom/Keshet/Yeger-Granot (CIM14 2014)."""
+    if "melody_curves" not in _state:
+        path = PROJECT_DIR / "app_assets" / "melody_curves.json"
+        with open(path, encoding="utf-8") as f:
+            _state["melody_curves"] = json.load(f)
+    return _state["melody_curves"]
+
+
+@app.get("/api/melody")
+def melody():
+    curves = get_melody_curves()
+    return {t: len(v) for t, v in curves.items()}
+
+
+def get_class_medoids():
+    """The single most *representative* real word per ta'am: the curve with
+    the smallest total DTW distance to every other curve in its class (the
+    medoid, not the mean -- a mean curve is an average of shapes and
+    corresponds to no actual recording you can play).
+
+    Why this matters for teaching: the existing teacher clips were picked
+    arbitrarily (whichever word happened to come first in a chosen parasha,
+    or Ben13's isolated demo). A medoid is defensible -- it is the recording
+    that is least unusual for its class, and its distance is reportable."""
+    if "class_medoids" not in _state:
+        curves = get_melody_curves()
+        out = {}
+        for taam, items in curves.items():
+            if len(items) < 3:
+                continue
+            mat = np.array([it["curve"] for it in items], dtype=float)
+            n = len(mat)
+            total = np.zeros(n)
+            for i in range(n):
+                for j in range(i + 1, n):
+                    d = dtw_component(mat[i], mat[j])[1]
+                    total[i] += d
+                    total[j] += d
+            best = int(np.argmin(total))
+            it = items[best]
+            out[taam] = {**it, "mean_distance": round(float(total[best] / (n - 1)), 3),
+                         "n_compared": n}
+        _state["class_medoids"] = out
+    return _state["class_medoids"]
+
+
+@app.get("/api/medoid/{taam}")
+def medoid(taam: str):
+    m = get_class_medoids().get(taam)
+    if not m:
+        return {"error": f"no representative example for {taam!r}"}
+    return {k: v for k, v in m.items() if k != "audio_file"}
+
+
+@app.get("/api/medoid/{taam}/audio")
+def medoid_audio(taam: str):
+    """The medoid word's actual audio, cut from the reader's recording."""
+    import io as _io
+    import soundfile as _sf
+    m = get_class_medoids().get(taam)
+    if not m:
+        return {"error": "not found"}
+    path = PROJECT_DIR / m["audio_file"]
+    if not path.exists():
+        return {"error": "source audio missing"}
+    y, sr = librosa.load(str(path), sr=None, offset=max(0, m["start"] - 0.05),
+                         duration=(m["end"] - m["start"]) + 0.1)
+    buf = _io.BytesIO()
+    _sf.write(buf, y, sr, format="WAV")
+    buf.seek(0)
+    from fastapi.responses import Response
+    return Response(content=buf.read(), media_type="audio/wav")
+
+
+@app.get("/api/melody/{taam}")
+def melody_taam(taam: str):
+    curves = get_melody_curves()
+    if taam not in curves:
+        return {"error": f"no melody data for {taam!r}"}
+    return {"taam": taam, "curves": curves[taam]}
+
+
 def get_ben13_source_index():
     """{(type_name, order): source-clip manifest entry} -- for showing the
     full original combo clip alongside a cut segment, so a reviewer can
@@ -154,12 +260,220 @@ def load_review_notes() -> dict:
 def save_review_note(clip_id: str, note: str, flag: str):
     notes = load_review_notes()
     if note or flag:
-        notes[clip_id] = {"note": note, "flag": flag}
+        notes[clip_id] = {"note": note, "flag": flag, "saved_at": time.time()}
     else:
         notes.pop(clip_id, None)
     REVIEW_NOTES_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(REVIEW_NOTES_PATH, "w", encoding="utf-8") as f:
         json.dump(notes, f, ensure_ascii=False, indent=1)
+
+
+def _clean_hebrew(text):
+    """Normalise the whitespace artifacts Ben13's source text carries.
+
+    Two different things both need handling: a real U+00A0 non-breaking
+    space, and -- the nastier one -- the four literal characters
+    backslash-x-A-0, which are not whitespace at all. Python's str.split()
+    treats the real nbsp as a separator but glues words together across the
+    literal escape, so an entry like "מונח\\xA0רביעי" tokenizes as ONE word
+    carrying TWO ta'amim, which is exactly the shape segment_ben13_clips.py
+    rejects as unsplittable. Replacing it with a space first is what lets
+    those entries tokenize correctly."""
+    if not text:
+        return text
+    return text.replace("\\xA0", " ").replace("\\xa0", " ") \
+               .replace("\xa0", " ").replace("\\n", " ").strip()
+
+
+def get_ben13_last_regenerated() -> float:
+    path = BEN13_SEGMENTS_DIR / "last_regenerated.json"
+    if not path.exists():
+        return 0.0
+    with open(path, encoding="utf-8") as f:
+        return json.load(f).get("timestamp", 0.0)
+
+
+def get_ben13_single_items() -> list:
+    """Ben13 entries that demonstrate exactly one ta'am on their own -- these
+    were only ever wired into the teacher-clip system (app_assets/teacher_
+    contours.json), never into this review tool, even though they're 24 of
+    Ben13's 75 clips and the only Ben13 coverage at all for 8 classes
+    (Gershayim, Mercha_Kefula, Pazer, Shalshelet, Telisha_Gedola,
+    Telisha_Qetana, Yetiv, Zaqef_Gadol never appear in any combo, so they
+    never produced a segment). No cutting needed -- the whole clip already
+    is the one ta'am -- so 'segment' and 'source' audio are the same file."""
+    items = []
+    for type_dir in sorted(BEN13_SOURCE_DIR.iterdir()) if BEN13_SOURCE_DIR.exists() else []:
+        mpath = type_dir / "manifest.json"
+        if not mpath.exists():
+            continue
+        with open(mpath, encoding="utf-8") as f:
+            entries = json.load(f)
+        for e in entries:
+            if len(e["taam_sequence"]) != 1:
+                continue
+            audio_path = PROJECT_DIR / e["local_path"]
+            if not audio_path.exists():
+                continue
+            items.append({
+                "kind": "single",
+                "clip_id": f"{e['taam_sequence'][0]}_{type_dir.name}-{e['order']}_solo",
+                "taam": e["taam_sequence"][0],
+                "source_type": type_dir.name,
+                "source_order": e["order"],
+                "ctc_score": None,
+                "duration": None,
+                "low_confidence": False,
+                "label_note": None,
+                "source_text": e.get("text"),
+                "source_text_sfaradi": e.get("textSfaradi"),
+                "_audio_path": audio_path,
+            })
+    return items
+
+
+def load_manual_cuts() -> dict:
+    if not MANUAL_CUTS_PATH.exists():
+        return {}
+    with open(MANUAL_CUTS_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def load_whisper_crosscheck() -> dict:
+    """Data_Prep/whisper_crosscheck_ben13.py's output: an independent,
+    unconstrained Whisper transcription of each combo clip, for comparison
+    against Ben13's declared word count. Whisper routinely OVER-splits
+    Sephardic compound names (e.g. "שופר-הולך" -> two ordinary Hebrew
+    words), so an over-count is expected noise and not itself meaningful --
+    only an UNDER-count (get_cut_clips filters to this) is a rare, useful
+    signal that a declared word may not actually be sung, confirmed against
+    the manually-found bad clips (order 180 both copies, order 20/100)."""
+    if not WHISPER_CROSSCHECK_PATH.exists():
+        return {}
+    with open(WHISPER_CROSSCHECK_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def get_cut_clips() -> list:
+    """One row per Ben13 *source* clip (not per segment) for the manual cut
+    editor: the whole clip plus the current word boundaries, so a reviewer
+    edits the transcript and drags the cuts in one place.
+
+    Boundaries are seeded from whatever exists -- a saved manual cut wins,
+    otherwise the CTC spans recorded by segment_ben13_clips.py -- so the
+    reviewer corrects an existing guess rather than placing every handle
+    from nothing."""
+    manual = load_manual_cuts()
+    whisper_xc = load_whisper_crosscheck()
+    ctc_by_clip = {}
+    if BEN13_SEGMENTS_MANIFEST.exists():
+        with open(BEN13_SEGMENTS_MANIFEST, encoding="utf-8") as f:
+            for seg in json.load(f):
+                key = f"{seg['source_type']}-{seg['source_order']}"
+                ctc_by_clip.setdefault(key, []).append(seg)
+
+    # Third automatic signal, independent of the other two: average
+    # seconds/word per clip. A clip whose declared text is right length but
+    # wrong (e.g. describes different content, or a very low-score CTC run
+    # compressed badly) doesn't necessarily fail the word-count checks --
+    # but it does produce abnormally short segments, since the alignment is
+    # squeezing real audio into too little of it. Confirmed against the
+    # reviewer's own notes: clips flagged this way include ones with
+    # complaints like "the cut sounds like the LAST word, not this one" --
+    # a genuine bad alignment neither of the other two signals catches.
+    ratios = {}
+    for key, segs in ctc_by_clip.items():
+        ctc_segs = [s for s in segs if s.get("cut_source", "ctc") == "ctc"]
+        if len(ctc_segs) >= 2:
+            ratios[key] = sum(s["duration"] for s in ctc_segs) / len(ctc_segs)
+    _rv = sorted(ratios.values())
+    _median_ratio = _rv[len(_rv) // 2] if _rv else 0
+    short_keys = {k for k, v in ratios.items() if v < _median_ratio * 0.75}
+
+    rows = []
+    for type_dir in sorted(BEN13_SOURCE_DIR.iterdir()) if BEN13_SOURCE_DIR.exists() else []:
+        mpath = type_dir / "manifest.json"
+        if not mpath.exists():
+            continue
+        with open(mpath, encoding="utf-8") as f:
+            entries = json.load(f)
+        for e in entries:
+            if len(e["taam_sequence"]) < 2:
+                continue          # nothing to cut on a single-ta'am clip
+            audio_path = PROJECT_DIR / e["local_path"]
+            if not audio_path.exists():
+                continue
+            key = f"{type_dir.name}-{e['order']}"
+            saved = manual.get(key)
+            if saved:
+                words = saved.get("words", [])
+            else:
+                segs = sorted(ctc_by_clip.get(key, []), key=lambda s: s.get("start") or 0)
+                words = [{"label": _clean_hebrew(s.get("word_text", "")),
+                          "taam": s["taam"],
+                          "start": s.get("start"), "end": s.get("end")}
+                         for s in segs if s.get("start") is not None]
+            xc = whisper_xc.get(key)
+            whisper_undercount = bool(xc and xc["whisper_n"] < xc["declared_n"])
+            rows.append({
+                "key": key,
+                "source_type": type_dir.name,
+                "source_order": e["order"],
+                "declared_sequence": e["taam_sequence"],
+                "text": _clean_hebrew(e.get("text")),
+                "text_sfaradi": _clean_hebrew(e.get("textSfaradi")),
+                "words": words,
+                "is_manual": bool(saved),
+                "text_fallback": any(s.get("text_fallback")
+                                     for s in ctc_by_clip.get(key, [])),
+                "low_confidence": any(s.get("low_confidence")
+                                      for s in ctc_by_clip.get(key, [])),
+                "whisper_undercount": whisper_undercount,
+                "whisper_text": " ".join(xc["whisper_words"]) if xc else None,
+                "short_duration": key in short_keys,
+            })
+    return rows
+
+
+def save_manual_cut(key: str, words: list, note: str = ""):
+    cuts = load_manual_cuts()
+    if words:
+        cuts[key] = {"words": words, "note": note, "saved_at": time.time()}
+    else:
+        cuts.pop(key, None)
+    MANUAL_CUTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(MANUAL_CUTS_PATH, "w", encoding="utf-8") as f:
+        json.dump(cuts, f, ensure_ascii=False, indent=1)
+
+
+def load_sephardi_names() -> dict:
+    if not SEPHARDI_NAMES_PATH.exists():
+        return {}
+    with open(SEPHARDI_NAMES_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_sephardi_name(taam: str, name: str):
+    names = load_sephardi_names()
+    if name:
+        names[taam] = name
+    else:
+        names.pop(taam, None)
+    SEPHARDI_NAMES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(SEPHARDI_NAMES_PATH, "w", encoding="utf-8") as f:
+        json.dump(names, f, ensure_ascii=False, indent=1)
+
+
+def load_acoustic_check() -> dict:
+    """Data_Prep/segment_acoustic_check.py's per-segment output. Only the
+    Whisper-silence half is trustworthy enough to surface (see that
+    script's docstring -- the edge-truncation heuristic didn't separate
+    clean cuts from bad ones on melismatic audio and was dropped, not
+    shipped as a misleading badge)."""
+    if not ACOUSTIC_CHECK_PATH.exists():
+        return {}
+    with open(ACOUSTIC_CHECK_PATH, encoding="utf-8") as f:
+        return json.load(f)
 
 
 def get_review_items() -> list:
@@ -173,12 +487,17 @@ def get_review_items() -> list:
         segments = json.load(f)
     notes = load_review_notes()
     source_idx = get_ben13_source_index()
+    sephardi_names = load_sephardi_names()
+    acoustic = load_acoustic_check()
+    regenerated_at = get_ben13_last_regenerated()
     items = []
     for e in segments:
         clip_id = Path(e["local_path"]).stem
         source = source_idx.get((e["source_type"], e["source_order"]))
         n = notes.get(clip_id, {})
+        saved_at = n.get("saved_at", 0.0)
         items.append({
+            "kind": "segment",
             "clip_id": clip_id,
             "taam": e["taam"],
             "source_type": e["source_type"],
@@ -186,10 +505,41 @@ def get_review_items() -> list:
             "ctc_score": e["ctc_score"],
             "duration": e["duration"],
             "low_confidence": e["low_confidence"],
-            "source_text": source["text"] if source else None,
-            "source_text_sfaradi": source["textSfaradi"] if source else None,
+            "label_note": e.get("label_note"),
+            "source_text": _clean_hebrew(source["text"]) if source else None,
+            "source_text_sfaradi": _clean_hebrew(source["textSfaradi"]) if source else None,
             "note": n.get("note", ""),
             "flag": n.get("flag", ""),
+            "stale_note": bool((n.get("note") or n.get("flag")) and regenerated_at
+                               and saved_at < regenerated_at),
+            "sephardi_name": sephardi_names.get(e["taam"], ""),
+            "whisper_silent": acoustic.get(clip_id, {}).get("whisper_empty", False),
+        })
+
+    # Ben13's 24 single-ta'am clips (never cut, never entered this tool
+    # before -- see get_ben13_single_items) round out coverage to 24 of the
+    # project's 25 active classes (only Siluk has no Ben13 material at all,
+    # in any form -- not something this tool or a code fix can add).
+    for e in get_ben13_single_items():
+        clip_id = e["clip_id"]
+        n = notes.get(clip_id, {})
+        saved_at = n.get("saved_at", 0.0)
+        items.append({
+            "kind": "single",
+            "clip_id": clip_id,
+            "taam": e["taam"],
+            "source_type": e["source_type"],
+            "source_order": e["source_order"],
+            "ctc_score": None,
+            "duration": None,
+            "low_confidence": False,
+            "label_note": None,
+            "source_text": _clean_hebrew(e["source_text"]),
+            "source_text_sfaradi": _clean_hebrew(e["source_text_sfaradi"]),
+            "note": n.get("note", ""),
+            "flag": n.get("flag", ""),
+            "stale_note": False,
+            "sephardi_name": sephardi_names.get(e["taam"], ""),
         })
     return items
 
@@ -206,6 +556,77 @@ def word_spectrogram(y, start, end):
         mel_db = np.pad(mel_db, ((0, 0), (0, MAX_FRAMES - mel_db.shape[1])),
                         mode="constant", constant_values=PAD_DB)
     return mel_db[:, :MAX_FRAMES].astype(np.float32)
+
+
+
+SEQUENCE_TAGGER_PATH = (PROJECT_DIR / "results" / "sequence_model" / "FINAL_crf"
+                        / "verse_tagger.pth")
+
+
+def get_sequence_tagger():
+    """Verse-level BiLSTM + CRF over the production CNN's frozen embeddings.
+
+    This is the single biggest measured lever in the project and it was NOT
+    reaching the product: /api/analyze classified each word on its own at
+    87.8%, while the same words read in verse order score 94.6% -- the ta'amim
+    are a punctuation system, so a word's neighbours genuinely constrain it.
+
+    Returns None when the checkpoint is missing or was trained against a
+    different CNN, so the per-word path stays available rather than the
+    endpoint failing.
+    """
+    if "seq_tagger" not in _state:
+        _state["seq_tagger"] = None
+        try:
+            if not SEQUENCE_TAGGER_PATH.exists():
+                raise FileNotFoundError(SEQUENCE_TAGGER_PATH)
+            spec = importlib.util.spec_from_file_location(
+                "sm", PROJECT_DIR / "14_sequence_model.py")
+            sm = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(sm)
+            ck = torch.load(SEQUENCE_TAGGER_PATH, map_location="cpu",
+                            weights_only=False)
+            st = get_model()
+            if list(ck["class_names"]) != list(st["class_names"]):
+                raise RuntimeError(
+                    "verse tagger was trained on a different CNN's classes")
+            tagger = sm.VerseTagger(ck["in_dim"], len(ck["class_names"]))
+            tagger.load_state_dict(ck["model_state_dict"])
+            tagger.eval().to(st["device"])
+            crf = None
+            if "crf_state_dict" in ck:
+                crf = sm.LinearChainCRF(len(ck["class_names"]))
+                crf.load_state_dict(ck["crf_state_dict"])
+                crf.eval().to(st["device"])
+            _state["seq_tagger"] = {"tagger": tagger, "crf": crf,
+                                    "class_names": ck["class_names"]}
+        except Exception as e:
+            print(f"  sequence tagger unavailable ({e}); "
+                  f"/api/analyze falls back to per-word classification")
+    return _state["seq_tagger"]
+
+
+def tag_verse(specs):
+    """Per-word ta'amim for one verse, read in order. Falls back to the
+    per-word classifier when the tagger is unavailable."""
+    sq = get_sequence_tagger()
+    if sq is None or not specs:
+        return None
+    st = get_model()
+    embs = np.stack([embed(sp) for sp in specs])
+    x = torch.from_numpy(embs).float()[None].to(st["device"])
+    lengths = torch.tensor([len(specs)])
+    with torch.no_grad():
+        emissions = sq["tagger"](x, lengths)
+        if sq["crf"] is not None:
+            mask = torch.ones(1, len(specs), dtype=torch.bool, device=x.device)
+            path = sq["crf"].viterbi_decode(emissions, mask)[0]
+        else:
+            path = emissions[0].argmax(-1).cpu().tolist()
+        probs = torch.softmax(emissions[0], dim=-1).cpu().numpy()
+    return [{"taam": sq["class_names"][int(p)],
+             "confidence": float(probs[i][int(p)])}
+            for i, p in enumerate(path)]
 
 
 def classify(spec, top_k=3):
@@ -324,8 +745,32 @@ def teacher_catalogue():
         by_taam.setdefault(rec["taam"], []).append({
             "clip_id": clip_id, "word": rec["word"],
             "verse_ref": rec["verse_ref"], "duration": rec["duration"],
-            "curve": rec["f0_semitones"]})
+            "curve": rec["f0_semitones"], "source": rec.get("source")})
     return by_taam
+
+
+def get_ben13_reading_counts():
+    """Per-class word counts from Ben13's reading corpus (64,649 words,
+    100% ta'am-sequence match against Sefaria on every sampled verse --
+    validate_ben13_reading.py) -- an independent, second real-audio source
+    for the teaching layer to cite, not just the 11 isolated demo clips
+    Milestone 1B pulled in."""
+    if "ben13_reading_counts" not in _state:
+        counts = {}
+        if BEN13_READING_META.exists():
+            with open(BEN13_READING_META, encoding="utf-8") as f:
+                meta = json.load(f)
+            for m in meta:
+                counts[m["taam"]] = counts.get(m["taam"], 0) + 1
+        _state["ben13_reading_counts"] = counts
+    return _state["ben13_reading_counts"]
+
+
+@app.get("/api/ben13_stats")
+def ben13_stats():
+    """Per-class counts from the Ben13 reading corpus, for a real citation
+    line in the teaching layer -- not marketing copy, an actual number."""
+    return get_ben13_reading_counts()
 
 
 @app.get("/api/teacher/audio/{clip_id}")
@@ -376,8 +821,30 @@ async def verify_reading(audio: UploadFile = File(...), expected_taam: str = For
     except ValueError as e:
         return {"error": str(e)}
     log_attempt(raw, expected_taam, is_match, confidence)
+
+    # The learner's own pitch line, plus the class's reference shape, so the
+    # feedback can be "here is your melody against the expected one" instead
+    # of a bare pass/fail. Same normalisation as the corpus curves
+    # (Data_Prep/extract_melody_curves.py): 60 points, semitones relative to
+    # this utterance's own median -- shape, not absolute pitch.
+    student, reference = None, None
+    try:
+        c = f0_curve(y, n_points=60)
+        if c is not None:
+            student = [round(float(v), 3) for v in c]
+    except Exception:
+        student = None          # never let the drawing break the verdict
+    try:
+        curves = get_melody_curves().get(expected_taam) or []
+        if curves:
+            arr = np.array([cc["curve"] for cc in curves], dtype=float)
+            reference = [round(float(v), 3) for v in arr.mean(axis=0)]
+    except Exception:
+        reference = None
+
     return {"is_match": is_match, "confidence": round(confidence, 3),
-            "expected_taam": expected_taam}
+            "expected_taam": expected_taam,
+            "student_curve": student, "reference_curve": reference}
 
 
 @app.post("/api/analyze")
@@ -387,17 +854,30 @@ async def analyze(audio: UploadFile = File(...)):
     segments, _ = get_whisper().transcribe(
         y16, language="he", word_timestamps=True, beam_size=5)
     words = []
+    pending = []          # (word_text, spec) in reading order, for the tagger
     for seg in segments:
         for w in (seg.words or []):
             spec = word_spectrogram(y, w.start, w.end)
             if spec is None:
                 continue
+            pending.append((w.word.strip(), spec))
             top3, _ = classify(spec)
             words.append({"word": w.word.strip(),
                           "start": round(w.start, 2), "end": round(w.end, 2),
                           "predictions": [{"taam": t, "prob": round(p, 3)}
                                           for t, p in top3]})
-    return {"words": words}
+    # Second pass over the same words, this time in order and with verse
+    # context. Measured 87.8% -> 94.6% on held-out parashot, so the per-word
+    # answer is kept only as a fallback and for comparison.
+    seq = tag_verse([sp for _, sp in pending])
+    if seq and len(seq) == len(words):
+        for w, s_ in zip(words, seq):
+            preds = w.get("predictions") or []
+            w["per_word_taam"] = preds[0]["taam"] if preds else None
+            w["taam"] = s_["taam"]
+            w["confidence"] = s_["confidence"]
+        return {"words": words, "method": "verse_context_crf"}
+    return {"words": words, "method": "per_word"}
 
 
 # ------------------------------------------------------- Ben13 review UI --
@@ -419,6 +899,15 @@ def review_audio(clip_id: str):
     clip_id = safe_clip_id(clip_id)
     for e in get_review_items():
         if e["clip_id"] == clip_id:
+            if e["kind"] == "single":
+                # never cut -- the whole Ben13 clip already is the one
+                # ta'am, so "segment" and "source" audio are the same file.
+                source = get_ben13_source_index().get((e["source_type"], e["source_order"]))
+                if source:
+                    p = PROJECT_DIR / source["local_path"]
+                    if p.exists():
+                        return FileResponse(p, media_type="audio/mpeg")
+                break
             for type_dir in BEN13_SEGMENTS_DIR.iterdir() if BEN13_SEGMENTS_DIR.exists() else []:
                 p = type_dir / f"{clip_id}.wav"
                 if p.exists():
@@ -447,6 +936,129 @@ def review_note(payload: dict = Body(...)):
     if not clip_id:
         return {"error": "missing clip_id"}
     save_review_note(clip_id, payload.get("note", ""), payload.get("flag", ""))
+    return {"ok": True}
+
+
+# ------------------------------------------------------ ta'am grammar --
+# The teaching layer (Data_Prep/taam_grammar.py): the accents encode a
+# recursive division of the verse, so the app can answer "why does the
+# verse break here?" rather than only "wrong ta'am". Parses 100% of the
+# 5,846 cached Torah verses.
+def get_taam_grammar():
+    if "taam_grammar" not in _state:
+        spec = importlib.util.spec_from_file_location(
+            "taam_grammar", PROJECT_DIR / "Data_Prep" / "taam_grammar.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _state["taam_grammar"] = mod
+    return _state["taam_grammar"]
+
+
+@app.get("/api/verse_tree")
+def verse_tree(book: str, chapter: int, verse: int):
+    """The cantillation parse tree for one verse, plus a plain-Hebrew
+    explanation of each division -- what a learner is actually shown."""
+    tg = get_taam_grammar()
+    path = PROJECT_DIR / "Data_Prep" / "sefaria_cache" / f"{book}.{chapter}.json"
+    if not path.exists():
+        return {"error": f"no cached text for {book} {chapter}"}
+    with open(path, encoding="utf-8") as f:
+        verses = json.load(f)
+    if verse < 1 or verse > len(verses):
+        return {"error": f"{book} {chapter} has {len(verses)} verses"}
+    tree, tokens = tg.parse_verse(verses[verse - 1])
+    if tree is None:
+        return {"error": "could not parse"}
+    return {
+        "ref": f"{book} {chapter}:{verse}",
+        "words": [{"word": w, "taam": t, "taam_he": tg.TAAM_HE.get(t),
+                   "role": ("מפסיק" if t in tg.DISJUNCTIVE_RANK
+                            else "משרת" if t in tg.CONJUNCTIVE else None),
+                   "rank": tg.DISJUNCTIVE_RANK.get(t),
+                   "rank_he": tg.RANK_HE.get(tg.DISJUNCTIVE_RANK.get(t))}
+                  for w, t in tokens],
+        "tree": tree,
+        "explanation": tg.describe(tree, tokens),
+        "depth": tg.tree_depth(tree),
+    }
+
+
+@app.get("/api/verse_books")
+def verse_books():
+    """Which books/chapters have cached cantillated text available."""
+    out = {}
+    d = PROJECT_DIR / "Data_Prep" / "sefaria_cache"
+    for f in sorted(d.glob("*.json")) if d.exists() else []:
+        book, ch = f.stem.rsplit(".", 1)
+        out.setdefault(book, []).append(int(ch))
+    return {b: sorted(v) for b, v in out.items()}
+
+
+# ---------------------------------------------------- manual cut editor --
+# webapp/static/cut.html. Ben13's own text is not a reliable transcript of
+# its own audio (confirmed by review: several clips list words that are
+# never sung), and a forced alignment handed too many words compresses
+# silently rather than failing -- so every boundary after the phantom word
+# is wrong, with a perfectly ordinary-looking confidence score. The only
+# fix is a human correcting the transcript and the cuts by ear.
+@app.get("/api/cut/clips")
+def cut_clips():
+    return get_cut_clips()
+
+
+@app.get("/api/cut/taamim")
+def cut_taamim():
+    """Every ta'am class the project knows, for the per-word dropdown."""
+    spec = importlib.util.spec_from_file_location(
+        "clean_align_v2", PROJECT_DIR / "Data_Prep" / "clean_align_v2.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return sorted(set(mod.TAAM_MAP.values())) + ["Siluk"]
+
+
+@app.get("/api/cut/audio/{key}")
+def cut_audio(key: str):
+    key = safe_clip_id(key)
+    for row in get_cut_clips():
+        if row["key"] == key:
+            source = get_ben13_source_index().get(
+                (row["source_type"], row["source_order"]))
+            if source:
+                p = PROJECT_DIR / source["local_path"]
+                if p.exists():
+                    return FileResponse(p, media_type="audio/mpeg")
+    return {"error": "clip not found"}
+
+
+@app.post("/api/cut/save")
+def cut_save(payload: dict = Body(...)):
+    key = safe_clip_id(payload.get("key", ""))
+    if not key:
+        return {"error": "missing key"}
+    words = payload.get("words") or []
+    for w in words:
+        try:
+            w["start"], w["end"] = float(w["start"]), float(w["end"])
+        except (KeyError, TypeError, ValueError):
+            return {"error": "each word needs numeric start/end"}
+        if w["end"] <= w["start"]:
+            return {"error": f"word {w.get('label','')!r} ends before it starts"}
+    save_manual_cut(key, words, payload.get("note", ""))
+    return {"ok": True, "saved": len(words)}
+
+
+@app.post("/api/review/sephardi_name")
+def review_sephardi_name(payload: dict = Body(...)):
+    """One name per ta'am CLASS, not per clip -- Ben13's own scraped text is
+    too inconsistent to derive this automatically (the same class shows up
+    under different spoken names in different clips; confirmed by hand, see
+    results/v3_comparison/ben13_segment_review.md), so this is a reviewer-
+    entered label, editable from the review UI, shown next to every clip of
+    that class."""
+    taam = payload.get("taam", "")
+    if not taam:
+        return {"error": "missing taam"}
+    save_sephardi_name(taam, payload.get("name", ""))
     return {"ok": True}
 
 

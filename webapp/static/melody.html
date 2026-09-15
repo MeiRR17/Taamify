@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>מנתח מלודיות טעמים</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { margin: 0; }
+  .page { max-width: 1040px; margin: 0 auto; padding: 0 22px 70px; }
+  header { padding: 22px 0 14px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+  header h1 { font-size: 21px; margin: 0 0 5px; }
+  header .sub { color: var(--muted); font-size: 13px; line-height: 1.6; max-width: 78ch; }
+  header .sub b { color: inherit; }
+
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .toolbar select { padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px;
+                    font-size: 14px; background: #fff; font-family: inherit; }
+  .toolbar label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+  .stat { font-size: 12.5px; color: var(--muted); }
+  .stat b { color: var(--text, inherit); }
+
+  .chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+                padding: 18px 20px 14px; margin-bottom: 16px; }
+  canvas { width: 100%; height: 380px; display: block; }
+  .legend-row { display: flex; gap: 16px; font-size: 12px; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
+  .legend-row span { display: flex; align-items: center; gap: 5px; }
+  .legend-row i { width: 18px; height: 2px; display: inline-block; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .row { background: var(--card); border: 1px solid var(--border); border-radius: 9px;
+         padding: 10px 12px; cursor: pointer; font-size: 12.5px; }
+  .row:hover { border-color: var(--accent); }
+  .row .w { font-size: 16px; margin-bottom: 3px; }
+  .row .m { color: var(--muted); font-size: 11px; }
+  .row.hidden-curve { opacity: .35; }
+
+  .empty { color: var(--muted); font-size: 13.5px; padding: 30px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <h1>מנתח מלודיות טעמים</h1>
+  <div class="sub">
+    לכל דוגמה — מילה אמיתית מתוך קריאה טבעית (R1/R2/R8), לא קליפ הדגמה מבודד.
+    ציר הזמן מנורמל לאורך המילה, ציר הגובה הוא <b>סמיטונים יחסית לתו החציוני של
+    אותה מילה</b> — כך שרואים צורה, לא גובה מוחלט (השיטה: Ben-Shalom, Keshet
+    &amp; Yeger-Granot, CIM14 2014 — ניתוח יציבות מלודיה בטעמי מקרא תימני, אותו
+    רעיון, כאן על נתוני קורפוס גדולים יותר).
+  </div>
+</header>
+
+<div class="toolbar">
+  <select id="taam"></select>
+  <label><input type="checkbox" id="showmean" checked> הצג עקומה ממוצעת</label>
+  <span class="stat" id="stat"></span>
+</div>
+
+<div class="chart-wrap">
+  <canvas id="chart"></canvas>
+  <div class="legend-row" id="legend"></div>
+</div>
+
+<div class="grid" id="grid"></div>
+
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const TAAM_HE = {
+  Etnachta: "אתנחתא", Segol: "סגול", Shalshelet: "שלשלת",
+  Zaqef_Qatan: "זקף קטן", Zaqef_Gadol: "זקף גדול", Tipecha: "טפחא",
+  Revia: "רביע", Zarqa: "זרקא", Pashta: "פשטא", Yetiv: "יתיב",
+  Tevir: "תביר", Geresh: "גרש", Gershayim: "גרשיים",
+  Pazer: "פזר גדול", Telisha_Gedola: "תלישא גדולה",
+  Telisha_Qetana: "תלישא קטנה", Munach: "מונח", Mahapakh: "מהפך",
+  Mercha: "מרכא", Mercha_Kefula: "מרכא כפולה", Darga: "דרגא",
+  Qadma: "קדמא", Siluk: "סילוק",
+};
+const READER_COLOR = { R1: "#2F5D6E", R2: "#96631F", R8: "#6F4E8C" };
+
+let counts = {}, currentCurves = [], hidden = new Set();
+
+// Mean pairwise DTW distance within a class -- the honest stability metric.
+// Raw point-wise correlation was tried first and is WRONG here: it treats a
+// melody shifted by one syllable as unrelated, which made five classes look
+// structureless when they aren't. DTW aligns in time before comparing.
+const BASELINE_DTW = 0.81;   // random cross-class pairs, measured with THIS
+                             // exact normalisation (n+m). A path-length
+                             // normalisation gives 1.23 -- different scale,
+                             // so the two must not be mixed.
+
+function dtwDist(a, b) {
+  const n = a.length, m = b.length;
+  let prev = new Float64Array(m + 1).fill(Infinity);
+  let cur = new Float64Array(m + 1);
+  prev[0] = 0;
+  for (let i = 1; i <= n; i++) {
+    cur[0] = Infinity;
+    for (let j = 1; j <= m; j++) {
+      const cost = Math.abs(a[i - 1] - b[j - 1]);
+      cur[j] = cost + Math.min(prev[j], cur[j - 1], prev[j - 1]);
+    }
+    [prev, cur] = [cur, prev];
+  }
+  // normalise by path length (approximated by the diagonal) so longer
+  // curves don't score as automatically worse
+  return prev[m] / (n + m);
+}
+
+function stability(curves) {
+  if (curves.length < 3) return null;
+  let sum = 0, k = 0;
+  for (let i = 0; i < curves.length; i++)
+    for (let j = i + 1; j < curves.length; j++) { sum += dtwDist(curves[i], curves[j]); k++; }
+  return sum / k;
+}
+
+async function boot() {
+  counts = await fetch("/api/melody").then(r => r.json());
+  const sel = $("taam");
+  Object.keys(counts).sort((a, b) => counts[b] - counts[a]).forEach(t => {
+    const o = document.createElement("option");
+    o.value = t; o.textContent = `${TAAM_HE[t] || t} (${counts[t]})`;
+    sel.appendChild(o);
+  });
+  sel.addEventListener("change", loadTaam);
+  $("showmean").addEventListener("change", draw);
+  window.addEventListener("resize", draw);
+  loadTaam();
+}
+
+async function loadTaam() {
+  const t = $("taam").value;
+  hidden = new Set();
+  const d = await fetch(`/api/melody/${t}`).then(r => r.json());
+  currentCurves = d.curves || [];
+  const stab = stability(currentCurves.map(c => c.curve));
+  const verdict = stab === null ? ""
+    : stab < BASELINE_DTW * 0.85
+      ? `<b style="color:#2e7d4f">צורה עקבית</b> (מרחק ${stab.toFixed(2)} מול בסיס אקראי ${BASELINE_DTW})`
+      : stab < BASELINE_DTW * 1.05
+        ? `<b style="color:#8a6716">גבולי</b> (${stab.toFixed(2)} מול ${BASELINE_DTW})`
+        : `<b style="color:#a6453c">מפוזר</b> (${stab.toFixed(2)} מול ${BASELINE_DTW}) — אין צורה משותפת ברורה`;
+  $("stat").innerHTML = `<b>${currentCurves.length}</b> מילים אמיתיות · קוראים: ` +
+    [...new Set(currentCurves.map(c => c.reader))].join(", ") +
+    (verdict ? ` · ${verdict}` : "");
+  renderLegend();
+  renderGrid();
+  draw();
+}
+
+function renderLegend() {
+  const readers = [...new Set(currentCurves.map(c => c.reader))];
+  $("legend").innerHTML = readers.map(r =>
+    `<span><i style="background:${READER_COLOR[r] || "#888"}"></i>${r}</span>`).join("") +
+    `<span><i style="background:#000;height:3px"></i>ממוצע</span>`;
+}
+
+function renderGrid() {
+  const grid = $("grid");
+  grid.innerHTML = "";
+  currentCurves.forEach((c, i) => {
+    const el = document.createElement("div");
+    el.className = "row";
+    el.innerHTML = `<div class="w">${c.word}</div>
+      <div class="m">${c.reader} · ${c.verse_ref} · ${c.duration}s</div>`;
+    el.addEventListener("click", () => {
+      if (hidden.has(i)) hidden.delete(i); else hidden.add(i);
+      el.classList.toggle("hidden-curve");
+      draw();
+    });
+    grid.appendChild(el);
+  });
+}
+
+function draw() {
+  const cv = $("chart");
+  if (!currentCurves.length) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext("2d"); g.scale(dpr, dpr);
+  g.clearRect(0, 0, W, H);
+
+  const visible = currentCurves.filter((_, i) => !hidden.has(i));
+  const all = visible.flatMap(c => c.curve);
+  const lo = Math.min(...all, -6), hi = Math.max(...all, 6);
+  const pad = { l: 34, r: 10, t: 10, b: 18 };
+  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+  const N = 60;
+  const x = i => pad.l + (i / (N - 1)) * iw;
+  const y = v => pad.t + ih - ((v - lo) / (hi - lo)) * ih;
+
+  // gridlines at integer semitone steps
+  g.strokeStyle = "#00000012"; g.lineWidth = 1; g.font = "11px system-ui";
+  g.fillStyle = "#888";
+  const step = (hi - lo) > 14 ? 4 : 2;
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+    const yy = y(v);
+    g.beginPath(); g.moveTo(pad.l, yy); g.lineTo(W - pad.r, yy); g.stroke();
+    g.fillText(v > 0 ? "+" + v : v, 2, yy + 4);
+  }
+  // zero line (each word's own median pitch)
+  g.strokeStyle = "#00000030"; g.beginPath();
+  g.moveTo(pad.l, y(0)); g.lineTo(W - pad.r, y(0)); g.stroke();
+
+  visible.forEach(c => {
+    g.strokeStyle = (READER_COLOR[c.reader] || "#888") + "99";
+    g.lineWidth = 1.5;
+    g.beginPath();
+    c.curve.forEach((v, i) => i === 0 ? g.moveTo(x(i), y(v)) : g.lineTo(x(i), y(v)));
+    g.stroke();
+  });
+
+  if ($("showmean").checked && visible.length > 1) {
+    const mean = Array.from({ length: N }, (_, i) =>
+      visible.reduce((s, c) => s + c.curve[i], 0) / visible.length);
+    g.strokeStyle = "#000"; g.lineWidth = 3;
+    g.beginPath();
+    mean.forEach((v, i) => i === 0 ? g.moveTo(x(i), y(v)) : g.lineTo(x(i), y(v)));
+    g.stroke();
+  }
+}
+
+boot();
+</script>
+</body>
+</html>

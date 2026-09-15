@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>עורך חיתוך ידני — בן13</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { height: 100vh; overflow: hidden; }
+  header { padding: 10px 20px; }
+  header h1 { font-size: 17px; }
+  header .explain { font-size: 12.5px; color: var(--muted); margin-top: 3px; max-width: 90ch; line-height: 1.55; }
+  header .navlink { font-size: 12.5px; }
+
+  .layout { display: flex; height: calc(100vh - 86px); }
+
+  .sidebar { width: 250px; flex-shrink: 0; border-left: 1px solid var(--border);
+             display: flex; flex-direction: column; background: var(--card); }
+  .sidebar .head { padding: 8px 12px; border-bottom: 1px solid var(--border);
+                   font-size: 12px; color: var(--muted); }
+  .list { flex: 1; overflow-y: auto; }
+  .row { padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 13px; }
+  .row:hover { background: var(--accent-soft); }
+  .row.active { background: var(--accent-soft); border-right: 3px solid var(--accent); }
+  .row .k { font-weight: 600; }
+  .row .m { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .row .badge { font-size: 10px; padding: 1px 6px; border-radius: 100px; margin-inline-start: 4px; }
+  .badge.manual { background: #e5f4e9; color: var(--good); }
+  .badge.suspect { background: #f9e7e7; color: var(--bad); }
+
+  .main { flex: 1; overflow-y: auto; padding: 18px 26px; }
+  .empty { color: var(--muted); padding: 40px; text-align: center; }
+
+  .banner { border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px; line-height: 1.6; }
+  .banner.suspect { background: #f9e7e7; border: 1px solid var(--bad); color: #7a2323; }
+  .banner strong { display: block; margin-bottom: 3px; }
+
+  .wave-wrap { position: relative; margin: 10px 0 6px; user-select: none; }
+  canvas { width: 100%; height: 130px; display: block; border: 1px solid var(--border);
+           border-radius: 8px; background: var(--card); }
+  .playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--bad);
+              pointer-events: none; display: none; }
+  .hint { font-size: 11.5px; color: var(--muted); margin-bottom: 12px; }
+
+  table.words { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 14px; }
+  table.words th { text-align: right; font-size: 11px; color: var(--muted); font-weight: 600;
+                   padding: 0 6px 6px 0; border-bottom: 1px solid var(--border); }
+  table.words td { padding: 5px 6px 5px 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  table.words input[type=text] { width: 100%; padding: 4px 7px; border: 1px solid var(--border);
+                                 border-radius: 5px; font-size: 14px; font-family: inherit; }
+  table.words input[type=number] { width: 74px; padding: 4px 6px; border: 1px solid var(--border);
+                                   border-radius: 5px; font-size: 12.5px; direction: ltr; }
+  table.words select { padding: 4px 6px; border: 1px solid var(--border); border-radius: 5px; font-size: 12.5px; }
+  .mini { padding: 3px 9px; border-radius: 5px; border: 1px solid var(--border);
+          background: #fff; cursor: pointer; font-size: 12px; }
+  .mini.danger { color: var(--bad); border-color: var(--bad); }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-inline-end: 5px; }
+
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+  .toolbar button { padding: 7px 15px; border-radius: 6px; border: 1px solid var(--border);
+                    background: #fff; cursor: pointer; font-size: 13px; }
+  .toolbar button.primary { background: var(--accent); color: #fff; border: none; font-weight: 600; }
+  .toolbar .status { font-size: 12.5px; color: var(--good); }
+  .orig { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; line-height: 1.7; }
+  .orig b { color: inherit; }
+  .orig .txt { font-size: 17px; color: var(--text, inherit); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><h1>עורך חיתוך ידני — בן13</h1></div>
+  <div class="explain">
+    כאן אתה קובע את האמת. הטקסט של בן13 <b>לא תמיד תואם למה שנשמע בקליפ</b> — לפעמים
+    יש שם מילים שכלל לא מושרות, וזה מה שהזיז את כל החיתוכים. תקן את רשימת המילים למה
+    שאתה באמת שומע (מחק מילה מיותרת / הוסף חסרה), גרור את הגבולות בגלי הקול, ולחץ שמור.
+    <a class="navlink" href="review.html">← חזרה לבדיקת הקטעים</a>
+  </div>
+</header>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="head" id="side-head">טוען…</div>
+    <div class="list" id="list"></div>
+  </div>
+  <div class="main" id="main"><div class="empty">בחר קליפ מהרשימה כדי להתחיל.</div></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const TYPE_LABELS = { "teamimtora": "תורה", "teamim-meg": "מגילות", "teamim-haf": "הפטרה" };
+const COLORS = ["#3D4A8C","#A85736","#4B7A51","#96701F","#7A3E6B","#2F6E7A","#8C3D3D","#4A5A2E"];
+const TAAM_HE = {
+  Etnachta: "אתנחתא", Segol: "סגול", Shalshelet: "שלשלת",
+  Zaqef_Qatan: "זקף קטן", Zaqef_Gadol: "זקף גדול", Tipecha: "טפחא",
+  Revia: "רביע", Zarqa: "זרקא", Pashta: "פשטא", Yetiv: "יתיב",
+  Tevir: "תביר", Geresh: "גרש", Geresh_Muqdam: "גרש מוקדם",
+  Gershayim: "גרשיים", Qarney_Para: "קרני פרה", Telisha_Gedola: "תלישא גדולה",
+  Telisha_Qetana: "תלישא קטנה", Pazer: "פזר גדול", Munach: "מונח",
+  Mahapakh: "מהפך", Mercha: "מרכא", Mercha_Kefula: "מרכא כפולה",
+  Darga: "דרגא", Qadma: "קדמא", Yerach_Ben_Yomo: "ירח בן יומו",
+  Siluk: "סוף פסוק (סילוק)",
+};
+const heName = (t) => TAAM_HE[t] || t.replace(/_/g, " ");
+
+let clips = [], taamim = [], current = null;
+let audioBuf = null, peaks = null, ctxAudio = null, playSrc = null, rafId = null;
+
+async function boot() {
+  [clips, taamim] = await Promise.all([
+    fetch("/api/cut/clips").then(r => r.json()),
+    fetch("/api/cut/taamim").then(r => r.json()),
+  ]);
+  renderList();
+}
+
+function renderList() {
+  const done = clips.filter(c => c.is_manual).length;
+  const suspect = clips.filter(c => !c.is_manual &&
+    (c.text_fallback || c.whisper_undercount || c.short_duration)).length;
+  $("side-head").textContent =
+    `${done} / ${clips.length} תוקנו · ${suspect} מסומנים חשודים ועדיין לא תוקנו`;
+  const list = $("list");
+  list.innerHTML = "";
+  // suspect clips first — those are the ones whose transcript is most
+  // likely to disagree with the audio
+  const sorted = [...clips].sort((a, b) =>
+    (a.is_manual - b.is_manual) ||
+    (b.text_fallback - a.text_fallback) ||
+    (b.whisper_undercount - a.whisper_undercount) ||
+    (b.short_duration - a.short_duration) ||
+    (b.low_confidence - a.low_confidence) ||
+    a.key.localeCompare(b.key));
+  sorted.forEach(c => {
+    const row = document.createElement("div");
+    row.className = "row" + (current && c.key === current.key ? " active" : "");
+    row.innerHTML =
+      `<div class="k">${TYPE_LABELS[c.source_type] || c.source_type} #${c.source_order}` +
+      (c.is_manual ? `<span class="badge manual">ידני ✓</span>` : "") +
+      (c.text_fallback ? `<span class="badge suspect">טקסט חשוד</span>` : "") +
+      (c.whisper_undercount ? `<span class="badge suspect">Whisper: פחות מילים</span>` : "") +
+      (c.short_duration ? `<span class="badge suspect">קטעים קצרים מהצפוי</span>` : "") + `</div>` +
+      `<div class="m">${c.declared_sequence.map(heName).join(" · ")}</div>`;
+    row.onclick = () => selectClip(c.key);
+    list.appendChild(row);
+  });
+}
+
+async function selectClip(key) {
+  current = JSON.parse(JSON.stringify(clips.find(c => c.key === key)));
+  renderList();
+  renderMain();
+  await loadAudio(key);
+  drawWave();
+}
+
+function renderMain() {
+  const c = current;
+  $("main").innerHTML = `
+    ${c.text_fallback ? `<div class="banner suspect"><strong>⚑ הטקסט של הקליפ הזה חשוד</strong>
+      השדה <code>textSfaradi</code> (מה שהמדריך באמת שר) לא תאם לרצף הטעמים המוצהר, אז
+      החיתוך האוטומטי נפל חזרה על השדה <code>text</code> — שלפעמים מכיל יותר מילים ממה
+      שנשמע בפועל. זו בדיוק הסיבה שקטעים כאן יצאו משובשים. תקן לפי מה שאתה שומע.</div>` : ""}
+    ${c.whisper_undercount ? `<div class="banner suspect"><strong>⚑ בדיקה אוטומטית: Whisper שומע פחות מילים מהמוצהר</strong>
+      תמלול חופשי (בלי שום הכוונה מהטקסט של בן13) שמע רק
+      <code>${c.whisper_text || "—"}</code> — פחות מילים מרצף הטעמים המוצהר. זה סימן
+      חזק (אם כי לא מושלם — Whisper לא מכיר שמות טעמים) שיש כאן מילה שמוצהרת אך לא
+      באמת מושרת. שווה להתחיל מכאן.</div>` : ""}
+    ${c.short_duration ? `<div class="banner suspect"><strong>⚑ בדיקה אוטומטית: הקטעים כאן קצרים משמעותית מהממוצע</strong>
+      ייתכן שהטקסט נכון אבל היישור עצמו נכשל וממש דחס את השמע — סימן שהחיתוך כאן
+      לא אמין, גם אם מספר המילים תואם.</div>` : ""}
+    <div class="orig">
+      <div><b>טקסט ספרדי (textSfaradi):</b> <span class="txt">${c.text_sfaradi || "—"}</span></div>
+      <div><b>טקסט אקדמי (text):</b> <span class="txt">${c.text || "—"}</span></div>
+      <div><b>רצף טעמים מוצהר:</b> ${c.declared_sequence.map(heName).join(" ← ")}</div>
+      ${c.whisper_text ? `<div><b>תמלול חופשי (Whisper, לא מוכוון):</b> <span class="txt">${c.whisper_text}</span></div>` : ""}
+    </div>
+
+    <div class="wave-wrap" id="wave-wrap">
+      <canvas id="wave"></canvas>
+      <div class="playhead" id="playhead"></div>
+    </div>
+    <div class="hint">גרור את הקווים האנכיים כדי להזיז גבול · לחיצה על גלי הקול מנגנת מאותה נקודה</div>
+
+    <div class="toolbar">
+      <button onclick="playRange(0, audioBuf ? audioBuf.duration : 0)">▶ נגן הכל</button>
+      <button onclick="stopPlay()">■ עצור</button>
+      <button onclick="addWord()">+ הוסף מילה</button>
+      <button class="primary" onclick="save()">שמור חיתוך</button>
+      <span class="status" id="cut-status"></span>
+    </div>
+
+    <table class="words">
+      <tr><th style="width:26px"></th><th>המילה שנשמעת</th><th style="width:150px">טעם</th>
+          <th style="width:86px">התחלה</th><th style="width:86px">סוף</th><th style="width:132px"></th></tr>
+      <tbody id="wbody"></tbody>
+    </table>`;
+  renderWords();
+  const wrap = $("wave-wrap");
+  wrap.addEventListener("mousedown", onWaveDown);
+}
+
+function renderWords() {
+  const tb = $("wbody");
+  tb.innerHTML = "";
+  current.words.forEach((w, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td><span class="swatch" style="background:${COLORS[i % COLORS.length]}"></span></td>` +
+      `<td><input type="text" value="${(w.label || "").replace(/"/g, "&quot;")}" oninput="current.words[${i}].label=this.value"></td>` +
+      `<td><select onchange="current.words[${i}].taam=this.value; drawWave()">
+         <option value="">— דלג (לא טעם) —</option>
+         ${[...taamim].sort((a, b) => heName(a).localeCompare(heName(b), "he"))
+           .map(t => `<option value="${t}"${w.taam === t ? " selected" : ""}>${heName(t)}</option>`).join("")}
+       </select></td>` +
+      `<td><input type="number" step="0.01" value="${(+w.start).toFixed(2)}" oninput="current.words[${i}].start=parseFloat(this.value); drawWave()"></td>` +
+      `<td><input type="number" step="0.01" value="${(+w.end).toFixed(2)}" oninput="current.words[${i}].end=parseFloat(this.value); drawWave()"></td>` +
+      `<td><button class="mini" onclick="playRange(current.words[${i}].start, current.words[${i}].end)">▶ נגן</button>
+          <button class="mini danger" onclick="removeWord(${i})">מחק</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function addWord() {
+  const last = current.words[current.words.length - 1];
+  const s = last ? Math.min(last.end, (audioBuf?.duration || 1) - 0.2) : 0;
+  current.words.push({ label: "", taam: "", start: s, end: Math.min(s + 0.5, audioBuf?.duration || s + 0.5) });
+  renderWords(); drawWave();
+}
+function removeWord(i) { current.words.splice(i, 1); renderWords(); drawWave(); }
+
+// ── audio ────────────────────────────────────────────────────────────
+async function loadAudio(key) {
+  ctxAudio = ctxAudio || new (window.AudioContext || window.webkitAudioContext)();
+  const buf = await fetch(`/api/cut/audio/${key}`).then(r => r.arrayBuffer());
+  audioBuf = await ctxAudio.decodeAudioData(buf);
+  const ch = audioBuf.getChannelData(0), N = 1200;
+  const step = Math.floor(ch.length / N);
+  peaks = [];
+  for (let i = 0; i < N; i++) {
+    let mn = 1, mx = -1;
+    for (let j = i * step; j < (i + 1) * step && j < ch.length; j++) {
+      if (ch[j] < mn) mn = ch[j];
+      if (ch[j] > mx) mx = ch[j];
+    }
+    peaks.push([mn, mx]);
+  }
+}
+
+function drawWave() {
+  const cv = $("wave"); if (!cv || !peaks) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext("2d"); g.scale(dpr, dpr);
+  g.clearRect(0, 0, W, H);
+
+  g.fillStyle = "#c8ccd8";
+  peaks.forEach(([mn, mx], i) => {
+    const x = (i / peaks.length) * W;
+    g.fillRect(x, H / 2 + mn * H / 2 * 0.92, Math.max(W / peaks.length, 1), (mx - mn) * H / 2 * 0.92);
+  });
+
+  const dur = audioBuf ? audioBuf.duration : 1;
+  current.words.forEach((w, i) => {
+    const x0 = (w.start / dur) * W, x1 = (w.end / dur) * W;
+    const col = COLORS[i % COLORS.length];
+    g.fillStyle = col + "26"; g.fillRect(x0, 0, x1 - x0, H);
+    g.strokeStyle = col; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(x0, 0); g.lineTo(x0, H); g.stroke();
+    g.beginPath(); g.moveTo(x1, 0); g.lineTo(x1, H); g.stroke();
+    g.fillStyle = col; g.font = "600 11px system-ui";
+    g.fillText(w.taam ? heName(w.taam) : "—", x0 + 4, 13);
+  });
+}
+
+let dragging = null;
+function onWaveDown(ev) {
+  const cv = $("wave"), rect = cv.getBoundingClientRect();
+  const dur = audioBuf ? audioBuf.duration : 1;
+  const t = ((ev.clientX - rect.left) / rect.width) * dur;
+  // grab the nearest boundary handle within ~8px, else seek playback
+  let best = null, bestDist = (8 / rect.width) * dur;
+  current.words.forEach((w, i) => {
+    [["start", w.start], ["end", w.end]].forEach(([field, val]) => {
+      const d = Math.abs(val - t);
+      if (d < bestDist) { bestDist = d; best = { i, field }; }
+    });
+  });
+  if (best) {
+    dragging = best;
+    document.addEventListener("mousemove", onWaveMove);
+    document.addEventListener("mouseup", onWaveUp);
+  } else {
+    playRange(t, dur);
+  }
+}
+function onWaveMove(ev) {
+  if (!dragging) return;
+  const rect = $("wave").getBoundingClientRect();
+  const dur = audioBuf ? audioBuf.duration : 1;
+  let t = ((ev.clientX - rect.left) / rect.width) * dur;
+  t = Math.max(0, Math.min(dur, t));
+  const w = current.words[dragging.i];
+  if (dragging.field === "start") w.start = Math.min(t, w.end - 0.02);
+  else w.end = Math.max(t, w.start + 0.02);
+  drawWave();
+}
+function onWaveUp() {
+  dragging = null;
+  document.removeEventListener("mousemove", onWaveMove);
+  document.removeEventListener("mouseup", onWaveUp);
+  renderWords();
+}
+
+function stopPlay() {
+  if (playSrc) { try { playSrc.stop(); } catch (e) {} playSrc = null; }
+  if (rafId) cancelAnimationFrame(rafId);
+  const ph = $("playhead"); if (ph) ph.style.display = "none";
+}
+function playRange(start, end) {
+  if (!audioBuf) return;
+  stopPlay();
+  playSrc = ctxAudio.createBufferSource();
+  playSrc.buffer = audioBuf;
+  playSrc.connect(ctxAudio.destination);
+  const t0 = ctxAudio.currentTime;
+  playSrc.start(0, start, Math.max(0.02, end - start));
+  const ph = $("playhead"), cv = $("wave");
+  if (ph && cv) {
+    ph.style.display = "block";
+    const tick = () => {
+      const pos = start + (ctxAudio.currentTime - t0);
+      if (pos >= end) { stopPlay(); return; }
+      ph.style.left = (pos / audioBuf.duration) * cv.clientWidth + "px";
+      rafId = requestAnimationFrame(tick);
+    };
+    tick();
+  }
+}
+
+async function save() {
+  const res = await fetch("/api/cut/save", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: current.key, words: current.words }),
+  }).then(r => r.json());
+  const s = $("cut-status");
+  if (res.error) { s.style.color = "var(--bad)"; s.textContent = "שגיאה: " + res.error; return; }
+  s.style.color = "var(--good)";
+  s.textContent = `נשמר ✓ (${res.saved} מילים) — הרץ מחדש את segment_ben13_clips.py כדי לייצר את הקטעים`;
+  const idx = clips.findIndex(c => c.key === current.key);
+  clips[idx] = JSON.parse(JSON.stringify(current));
+  clips[idx].is_manual = true;
+  renderList();
+  setTimeout(() => { s.textContent = ""; }, 6000);
+}
+
+window.addEventListener("resize", () => { if (current) drawWave(); });
+boot();
+</script>
+</body>
+</html>

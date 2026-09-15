@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>לימוד טעמי המקרא</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { margin: 0; }
+  .page { max-width: 1000px; margin: 0 auto; padding: 0 22px 70px; }
+
+  header { padding: 22px 0 16px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  header h1 { font-size: 21px; margin: 0 0 4px; }
+  header .sub { color: var(--muted); font-size: 13px; }
+
+  .picker { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+  .picker select, .picker input { padding: 7px 10px; border: 1px solid var(--border);
+    border-radius: 6px; font-size: 14px; font-family: inherit; background: #fff; }
+  .picker label { font-size: 12.5px; color: var(--muted); }
+  .picker button { padding: 7px 16px; border-radius: 6px; border: none;
+    background: var(--accent); color: #fff; font-size: 13.5px; cursor: pointer; font-weight: 600; }
+
+  /* ── the verse ── */
+  .verse-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+               padding: 22px 24px; margin-bottom: 16px; }
+  .verse { font-size: 30px; line-height: 2.15; }
+  .w { cursor: pointer; padding: 2px 4px; border-radius: 5px; position: relative;
+       border-bottom: 3px solid transparent; transition: background .12s; }
+  .w:hover { background: var(--accent-soft); }
+  .w.sel { background: var(--accent-soft); }
+  /* border colour encodes the ta'am's structural strength, not its identity */
+  .w.r1 { border-bottom-color: #A6453C; }
+  .w.r2 { border-bottom-color: #B0761F; }
+  .w.r3 { border-bottom-color: #2F6E7A; }
+  .w.r4 { border-bottom-color: #6C7A8C; }
+  .w.conj { border-bottom-color: var(--border); }
+
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px;
+            color: var(--muted); margin-top: 14px; }
+  .legend span { display: flex; align-items: center; gap: 5px; }
+  .legend i { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
+
+  /* ── panels ── */
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+           padding: 18px 20px; }
+  .panel h2 { font-size: 15px; margin: 0 0 4px; }
+  .panel .hint { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+
+  .tree { font-size: 13px; line-height: 1.85; white-space: pre-wrap;
+          font-family: inherit; max-height: 320px; overflow-y: auto; }
+  .tree .lvl { color: var(--muted); }
+  .tree .div { color: var(--accent); font-weight: 600; }
+
+  .taam-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 3px; flex-wrap: wrap; }
+  .taam-head .name { font-size: 22px; font-weight: 700; }
+  .taam-head .role { font-size: 12px; padding: 2px 9px; border-radius: 100px; }
+  .role.disj { background: #f6e9e7; color: #8f3b33; }
+  .role.conj { background: var(--accent-soft); color: var(--accent); }
+  .why { font-size: 13.5px; color: var(--muted); line-height: 1.65; margin: 10px 0 14px; }
+  .why b { color: var(--text, inherit); }
+
+  .btnrow { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .btnrow button { padding: 8px 15px; border-radius: 7px; border: 1px solid var(--border);
+    background: #fff; cursor: pointer; font-size: 13.5px; }
+  .btnrow button.primary { background: var(--accent); color: #fff; border: none; font-weight: 600; }
+  .btnrow button:disabled { opacity: .5; cursor: default; }
+
+  .result { border-radius: 9px; padding: 12px 15px; font-size: 14px; margin-top: 10px; display: none; }
+  .result.match { background: #e6f4ea; border: 1px solid var(--good); color: #1e5c33; display: block; }
+  .result.no { background: #f9e7e7; border: 1px solid var(--bad); color: #8f3b33; display: block; }
+  .result .big { font-size: 16px; font-weight: 700; display: block; margin-bottom: 3px; }
+  .result .conf { font-size: 12px; opacity: .85; }
+
+  .status { font-size: 12.5px; color: var(--muted); min-height: 18px; }
+
+  .consent { background: #fffbe9; border: 1px solid var(--warn); border-radius: 10px;
+             padding: 14px 17px; font-size: 12.5px; line-height: 1.65; margin-bottom: 16px; }
+  .consent b { display: block; margin-bottom: 4px; }
+  .consent label { display: flex; gap: 7px; align-items: flex-start; margin-top: 9px; cursor: pointer; }
+  .empty { color: var(--muted); font-size: 13.5px; }
+  .medinfo { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.6; }
+  .medinfo b { color: var(--text, inherit); font-size: 14px; }
+  .curvebox { margin-top: 12px; border: 1px solid var(--border); border-radius: 9px;
+              padding: 12px 14px; background: var(--card); }
+  .curvebox canvas { width: 100%; height: 150px; display: block; }
+  .curvelbl { display: flex; gap: 14px; font-size: 11.5px; color: var(--muted);
+              margin-bottom: 6px; flex-wrap: wrap; }
+  .curvelbl span { display: flex; align-items: center; gap: 5px; }
+  .curvelbl i { width: 16px; height: 2px; display: inline-block; }
+  .curvehint { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+  .notyet { background: var(--accent-soft); border-radius: 9px; padding: 11px 14px;
+            font-size: 12.5px; line-height: 1.65; color: var(--muted); }
+  .notyet b { color: var(--text, inherit); }
+  .ben13cite { margin-top: 10px; font-size: 11.5px; line-height: 1.6; color: var(--muted);
+               border-top: 1px dashed var(--border); padding-top: 9px; }
+  .ben13cite b { color: var(--text, inherit); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <h1>לימוד טעמי המקרא</h1>
+  <div class="sub">בחר פסוק, ראה איך הטעמים מחלקים אותו, שמע איך כל טעם נשמע — ואז שיר בעצמך ותקבל משוב.</div>
+</header>
+
+<div class="consent" id="consent">
+  <b>לפני שמקליטים — שקוף לגמרי</b>
+  ההקלטה נשלחת לשרת המקומי הזה בלבד כדי לבדוק אם הטעם נכון. היא <b>לא</b> נשמרת
+  כשהתשובה חד-משמעית. היא כן נשמרת מקומית (בתיקייה על המחשב הזה, לא בענן ולא
+  משותפת) כשהמערכת <b>לא</b> מזהה התאמה או לא בטוחה — כי בדיוק ההקלטות האלה הן
+  היחידות שמאפשרות ללמד את המערכת לזהות טעויות אמיתיות.
+  <label><input type="checkbox" id="consent-ok"> הבנתי, אפשר להקליט</label>
+</div>
+
+<div class="picker">
+  <label>ספר</label><select id="book"></select>
+  <label>פרק</label><select id="chapter"></select>
+  <label>פסוק</label><input id="verse" type="number" min="1" value="1" style="width:70px">
+  <button id="load">הצג</button>
+  <span class="status" id="load-status"></span>
+</div>
+
+<div class="verse-box">
+  <div class="verse" id="verse-text"><span class="empty">בחר פסוק ולחץ "הצג".</span></div>
+  <div class="legend">
+    <span><i style="background:#A6453C"></i> קיסר — מחלק את הפסוק</span>
+    <span><i style="background:#B0761F"></i> מלך — מחלק חצי פסוק</span>
+    <span><i style="background:#2F6E7A"></i> משנה — מחלק משפט</span>
+    <span><i style="background:#6C7A8C"></i> שליש — מחלק צירוף</span>
+    <span><i style="background:#ccc"></i> משרת — מחבר למילה הבאה</span>
+  </div>
+</div>
+
+<div class="cols">
+  <div class="panel">
+    <h2>איך הפסוק נחלק</h2>
+    <div class="hint">הטעמים הם מערכת פיסוק: כל פסוק נחתך במפסיק החזק ביותר שבו, וכל חצי נחתך שוב.</div>
+    <div class="tree" id="tree"><span class="empty">—</span></div>
+  </div>
+
+  <div class="panel" id="word-panel">
+    <h2>המילה שנבחרה</h2>
+    <div class="hint">לחץ על מילה בפסוק כדי לשמוע ולתרגל אותה.</div>
+    <div id="word-body"><span class="empty">לא נבחרה מילה.</span></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let books = {}, current = null, selectedIdx = null, teacher = {}, verifiable = new Set();
+let ben13Stats = {};
+
+const RANK_CLASS = { 1: "r1", 2: "r2", 3: "r3", 4: "r4" };
+// share of Torah words carrying each unverifiable ta'am (measured over the
+// 68,613 cantillated words in the local Sefaria cache)
+const RARITY = { Geresh: "1.6", Darga: "1.6", Zaqef_Gadol: "0.8", Gershayim: "0.7",
+  Telisha_Qetana: "0.7", Zarqa: "0.6", Segol: "0.5", Yetiv: "0.5",
+  Telisha_Gedola: "0.4", Pazer: "0.2" };
+
+async function boot() {
+  let info;
+  [books, teacher, info, ben13Stats] = await Promise.all([
+    fetch("/api/verse_books").then(r => r.json()),
+    fetch("/api/teacher").then(r => r.json()),
+    fetch("/api/info").then(r => r.json()),
+    fetch("/api/ben13_stats").then(r => r.json()).catch(() => ({})),
+  ]);
+  // the production model covers 11 of the 25 classes; a word outside that
+  // set still gets the full teaching content, just no scoring -- said
+  // plainly rather than surfaced as an error
+  verifiable = new Set(info.classes || []);
+  const bsel = $("book");
+  Object.keys(books).forEach(b => {
+    const o = document.createElement("option"); o.value = b; o.textContent = b;
+    bsel.appendChild(o);
+  });
+  bsel.value = "Genesis";
+  fillChapters();
+  bsel.addEventListener("change", fillChapters);
+  $("load").addEventListener("click", loadVerse);
+  loadVerse();
+}
+
+function fillChapters() {
+  const csel = $("chapter"); csel.innerHTML = "";
+  (books[$("book").value] || []).forEach(c => {
+    const o = document.createElement("option"); o.value = c; o.textContent = c;
+    csel.appendChild(o);
+  });
+}
+
+async function loadVerse() {
+  const b = $("book").value, c = $("chapter").value, v = $("verse").value;
+  $("load-status").textContent = "טוען…";
+  const d = await fetch(`/api/verse_tree?book=${b}&chapter=${c}&verse=${v}`).then(r => r.json());
+  if (d.error) { $("load-status").textContent = d.error; return; }
+  $("load-status").textContent = "";
+  current = d; selectedIdx = null;
+  renderVerse(); renderTree();
+  $("word-body").innerHTML = '<span class="empty">לא נבחרה מילה.</span>';
+}
+
+function renderVerse() {
+  const box = $("verse-text"); box.innerHTML = "";
+  current.words.forEach((w, i) => {
+    const s = document.createElement("span");
+    s.className = "w " + (w.rank ? RANK_CLASS[w.rank] : (w.taam ? "conj" : ""));
+    s.textContent = w.word;
+    s.title = w.taam_he || "";
+    s.addEventListener("click", () => selectWord(i));
+    box.appendChild(s);
+    box.appendChild(document.createTextNode(" "));
+  });
+}
+
+function renderTree() {
+  const t = $("tree");
+  t.innerHTML = current.explanation.map(line => {
+    const esc = line.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    return esc.includes("מחלק:")
+      ? `<span class="div">${esc}</span>`
+      : `<span class="lvl">${esc}</span>`;
+  }).join("\n");
+}
+
+function selectWord(i) {
+  selectedIdx = i;
+  [...$("verse-text").querySelectorAll(".w")].forEach((el, j) =>
+    el.classList.toggle("sel", j === i));
+  const w = current.words[i];
+  if (!w.taam) {
+    $("word-body").innerHTML = `<div class="empty">למילה "${w.word}" אין טעם משלה — היא מוקפת למילה הבאה.</div>`;
+    return;
+  }
+  const clips = teacher[w.taam] || [];
+  const why = w.rank
+    ? `<b>${w.taam_he}</b> הוא <b>מפסיק</b> בדרגת <b>${w.rank_he}</b> — הוא מסיים כאן קטע,
+       וככל שהדרגה חזקה יותר כך הקטע שהוא סוגר גדול יותר.`
+    : `<b>${w.taam_he}</b> הוא <b>משרת</b> — הוא לא מפסיק, אלא מחבר את המילה הזו למילה שאחריה.`;
+
+  $("word-body").innerHTML = `
+    <div class="taam-head">
+      <span class="name">${w.taam_he}</span>
+      <span class="role ${w.rank ? "disj" : "conj"}">${w.role}${w.rank_he ? " · " + w.rank_he : ""}</span>
+    </div>
+    <div style="font-size:26px;margin-bottom:2px">${w.word}</div>
+    <div class="why">${why}</div>
+    <div class="btnrow">
+      ${clips.length ? `<button id="hear">▶ שמע את ${w.taam_he}</button>` : ""}
+      <button id="hearmed">▶ שמע דוגמה מייצגת</button>
+      ${verifiable.has(w.taam) ? `<button class="primary" id="rec">🎤 הקלט ובדוק</button>` : ""}
+    </div>
+    ${verifiable.has(w.taam) ? "" : `<div class="notyet">המערכת עדיין לא יודעת <b>לבדוק</b> את
+      ${w.taam_he} — הוא לא נכלל ב-11 הטעמים שהמודל הנוכחי אומן עליהם. אפשר ללמוד ולשמוע
+      אותו, אבל לא לקבל ציון. (${w.taam_he} מופיע בכ־${(RARITY[w.taam] || "פחות מ־1")}% מהמילים בתורה.)</div>`}
+    <div class="status" id="rec-status"></div>
+    <div class="result" id="result"></div>
+    <div class="curvebox" id="curvebox" hidden>
+      <div class="curvelbl">
+        <span><i style="background:#2F5D6E"></i> ההקלטה שלך</span>
+        <span><i style="background:#96631F"></i> הצורה הממוצעת של ${w.taam_he} (מהקורפוס)</span>
+      </div>
+      <canvas id="curve" width="600" height="150"></canvas>
+      <div class="curvehint">גובה יחסי בסמיטונים לאורך המילה — צורה, לא גובה מוחלט.
+        שתי העקומות מנורמלות אותו דבר, אז אפשר להשוות ישירות.</div>
+    </div>
+    ${clips.length ? "" : `<div class="empty" style="margin-top:8px">אין עדיין קליפ הדגמה לטעם הזה.</div>`}
+    <div class="medinfo" id="medinfo"></div>
+    ${ben13Citation(w.taam, clips)}
+    <audio id="teach-audio" style="display:none"></audio>`;
+
+  if (clips.length) {
+    $("hear").addEventListener("click", () => {
+      const a = $("teach-audio");
+      a.src = `/api/teacher/audio/${clips[0].clip_id}`;
+      a.play();
+    });
+  }
+  if (verifiable.has(w.taam)) {
+    $("rec").addEventListener("click", () => recordAndVerify(w.taam, w.taam_he));
+  }
+  loadMedoid(w.taam, w.taam_he);
+}
+
+// ── recording: raw PCM -> WAV, same approach as the practice tab ──
+async function recordWav(seconds, onTick) {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const ac = new AudioContext();
+  const src = ac.createMediaStreamSource(stream);
+  const proc = ac.createScriptProcessor(4096, 1, 1);
+  const chunks = [];
+  src.connect(proc); proc.connect(ac.destination);
+  proc.onaudioprocess = (e) => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  for (let s = seconds; s > 0; s--) { onTick(s); await new Promise(r => setTimeout(r, 1000)); }
+  proc.disconnect(); src.disconnect();
+  stream.getTracks().forEach(t => t.stop());
+  const sr = ac.sampleRate; await ac.close();
+  const n = chunks.reduce((a, c) => a + c.length, 0);
+  const pcm = new Float32Array(n);
+  let off = 0; chunks.forEach(c => { pcm.set(c, off); off += c.length; });
+  return encodeWav(pcm, sr);
+}
+
+function encodeWav(samples, sampleRate) {
+  const buf = new ArrayBuffer(44 + samples.length * 2);
+  const v = new DataView(buf);
+  const wr = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  wr(0, "RIFF"); v.setUint32(4, 36 + samples.length * 2, true); wr(8, "WAVE");
+  wr(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true); v.setUint32(24, sampleRate, true);
+  v.setUint32(28, sampleRate * 2, true); v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true); wr(36, "data"); v.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+// A real citation, not a marketing line: does an INDEPENDENT audio source
+// (ben13.co.il, a different tradition-matched corpus from the one the model
+// trains on) also carry this ta'am? Two separate facts, shown only when true:
+// the demo clip itself may be ben13-sourced (Milestone 1B), and/or the
+// ta'am appears N times in Ben13's reading corpus, verified word-for-word
+// against Sefaria (100% ta'am-sequence match on every sampled verse).
+function ben13Citation(taam, clips) {
+  const clipFromBen13 = clips.length && clips[0].source === "ben13";
+  const n = ben13Stats[taam] || 0;
+  if (!clipFromBen13 && !n) return "";
+  const parts = [];
+  if (clipFromBen13) {
+    parts.push(`קליפ ההדגמה כאן מקורו באתר <b>ben13.co.il</b>, מסורת ירושלמית-ספרדית זהה`);
+  }
+  if (n) {
+    parts.push(`הטעם מופיע ${n.toLocaleString("he")} פעמים בקורפוס הקריאה העצמאי של בן13
+      (שלא שימש לאימון), שנבדק מילה-מילה מול ספריא`);
+  }
+  return `<div class="ben13cite">📖 ${parts.join(" · ")}.</div>`;
+}
+
+// The "most representative" real word for this class -- the medoid by DTW,
+// i.e. the actual recording least unusual for its class. Chosen by
+// measurement rather than by whichever word happened to be picked first.
+async function loadMedoid(taam, taamHe) {
+  const btn = $("hearmed"), info = $("medinfo");
+  if (!btn) return;
+  const d = await fetch(`/api/medoid/${taam}`).then(r => r.json()).catch(() => null);
+  if (!d || d.error) {
+    btn.disabled = true;
+    if (info) info.textContent = "אין עדיין דוגמה מייצגת מחושבת לטעם הזה.";
+    return;
+  }
+  if (info) {
+    info.innerHTML = `הדוגמה המייצגת: <b>${d.word}</b> · ${d.reader} · ${d.verse_ref}
+      — זו ההקלטה שהכי פחות חריגה מבין ${d.n_compared} מופעים אמיתיים של
+      ${taamHe} (מרחק ממוצע ${d.mean_distance}).`;
+  }
+  btn.addEventListener("click", () => {
+    const a = $("teach-audio");
+    a.src = `/api/medoid/${taam}/audio`;
+    a.play();
+  });
+}
+
+function drawCurves(student, reference) {
+  const box = document.getElementById("curvebox");
+  const cv = document.getElementById("curve");
+  if (!box || !cv || !student) { if (box) box.hidden = true; return; }
+  box.hidden = false;
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext("2d"); g.scale(dpr, dpr);
+  g.clearRect(0, 0, W, H);
+  const series = [[student, "#2F5D6E"]];
+  if (reference) series.push([reference, "#96631F"]);
+  const all = series.flatMap(([c]) => c);
+  const lo = Math.min(...all, -4), hi = Math.max(...all, 4);
+  const pad = 6, iw = W - pad * 2, ih = H - pad * 2;
+  const X = i => pad + (i / (student.length - 1)) * iw;
+  const Y = v => pad + ih - ((v - lo) / (hi - lo)) * ih;
+  g.strokeStyle = "#00000018"; g.beginPath();
+  g.moveTo(pad, Y(0)); g.lineTo(W - pad, Y(0)); g.stroke();
+  series.forEach(([c, col]) => {
+    g.strokeStyle = col; g.lineWidth = col === "#96631F" ? 3 : 2;
+    g.beginPath();
+    c.forEach((v, i) => i === 0 ? g.moveTo(X(i), Y(v)) : g.lineTo(X(i), Y(v)));
+    g.stroke();
+  });
+}
+
+async function recordAndVerify(taam, taamHe) {
+  if (!$("consent-ok").checked) {
+    $("rec-status").textContent = "צריך לאשר את ההודעה למעלה לפני הקלטה.";
+    return;
+  }
+  const btn = $("rec"), st = $("rec-status"), res = $("result");
+  res.className = "result"; btn.disabled = true;
+  try {
+    const wav = await recordWav(3, s => { st.textContent = `מקליט… ${s}`; });
+    st.textContent = "בודק…";
+    const fd = new FormData();
+    fd.append("audio", wav, "attempt.wav");
+    fd.append("expected_taam", taam);
+    const d = await fetch("/api/verify_reading", { method: "POST", body: fd }).then(r => r.json());
+    st.textContent = "";
+    if (d.error) { st.textContent = d.error; return; }
+    const pct = Math.round(d.confidence * 100);
+    res.className = "result " + (d.is_match ? "match" : "no");
+    drawCurves(d.student_curve, d.reference_curve);
+    res.innerHTML = d.is_match
+      ? `<span class="big">✓ נשמע כמו ${taamHe}</span>
+         <span class="conf">ביטחון המערכת: ${pct}%</span>`
+      : `<span class="big">✗ לא זוהה כ${taamHe}</span>
+         <span class="conf">ביטחון המערכת: ${pct}% — נסה שוב, או שמע קודם את ההדגמה</span>`;
+  } catch (e) {
+    st.textContent = "לא הצלחתי לגשת למיקרופון: " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+boot();
+</script>
+</body>
+</html>
