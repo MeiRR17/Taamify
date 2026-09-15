@@ -96,3 +96,24 @@ results/v3_comparison/*.log
 # logging (webapp/server.py's log_attempt) -- local-only by design, never
 # committed: this is other people's recorded voices, not project source.
 app_assets/collected_attempts/
+
+# Learner recordings exported from the Taamim Studio page, and the audio
+# decoded from them. Same reason as collected_attempts/: other people's
+# voices, local only.
+incoming/
+app_assets/user_recordings/
+
+# Generated views. Both are rebuilt from live state by their scripts
+# (build_ops_dashboard.py, export_knowledge_base.py), so committing them
+# would just create a second source of truth that silently goes stale.
+ops_dashboard.html
+knowledge_base/
+
+# wav2vec2 feature dumps — 8GB, fully regenerable
+features_w2v/
+features_w2v_pool/
+features_w2v_seq/
+
+# Job queue runtime state — every .job file is a generated one-off, and the
+# logs/markers are per-run. The runner itself (run_queue.sh) is tracked.
+jobs/
