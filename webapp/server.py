@@ -62,8 +62,19 @@ WHISPER_CROSSCHECK_PATH = BEN13_SEGMENTS_DIR / "whisper_crosscheck.json"
 ACOUSTIC_CHECK_PATH = BEN13_SEGMENTS_DIR / "acoustic_check.json"
 BEN13_READING_META = PROJECT_DIR / "features_v3_word" / "BEN13R_meta.json"
 
-# audio constants — must match extract_features_v2.py
-SR = 22050
+# audio constants — must match the extractor that produced the features the
+# LOADED checkpoint was trained on. The production model is now the Ben13
+# Torah model, and Data_Prep/extract_ben13_reading_words.py builds its
+# spectrograms at ctc_align.SR = 16000, not the 22050 the older
+# extract_features_v2.py used for R1/R2/R8.
+#
+# This is not cosmetic. With librosa's default hop of 512, a frame is 32ms at
+# 16k and 23.2ms at 22050, so the same 87 frames cover 2.78s versus 2.02s --
+# every live spectrogram arrived time-compressed by ~38% relative to training.
+# The classifier still often named the right ta'am, while the verify head
+# (which is far more sensitive to the exact crop) collapsed: "בראשית" was
+# heard correctly as Tipecha and still rejected at 0.24 confidence.
+SR = 16000
 N_MELS = 128
 FMAX = 8000
 MAX_FRAMES = 87
@@ -847,6 +858,89 @@ async def verify_reading(audio: UploadFile = File(...), expected_taam: str = For
             "student_curve": student, "reference_curve": reference}
 
 
+
+@app.post("/api/check_phrase")
+async def check_phrase(audio: UploadFile = File(...),
+                       words: str = Form(...),
+                       taamim: str = Form(...)):
+    """The learning loop's core call: a recording of one phrase, plus the
+    words and ta'amim the text requires, in order. Returns a verdict per
+    word.
+
+    This is Stage A applied phrase by phrase rather than to a single word.
+    The learner never sings one word alone -- doing so changes the timing and
+    the melody -- so the recording is aligned to the expected words first
+    (the same CTC aligner the whole corpus was built with), and each word is
+    then verified against the ta'am the text demands. A word the aligner
+    cannot place is reported as such rather than guessed at, because telling
+    a child "wrong" when the system simply lost the word is the most costly
+    error this product can make.
+    """
+    word_list = [w for w in json.loads(words) if w.strip()]
+    taam_list = json.loads(taamim)
+    if len(word_list) != len(taam_list):
+        return {"error": "words and taamim must be the same length"}
+
+    y = load_wav(await audio.read())
+    if y is None or len(y) < SR * 0.2:
+        return {"error": "ההקלטה קצרה מדי"}
+
+    spec_mod = importlib.util.spec_from_file_location(
+        "va", PROJECT_DIR / "Data_Prep" / "verse_align.py")
+    va = importlib.util.module_from_spec(spec_mod)
+    spec_mod.loader.exec_module(va)
+    ca = importlib.util.spec_from_file_location(
+        "cv", PROJECT_DIR / "Data_Prep" / "clean_align_v2.py")
+    cv = importlib.util.module_from_spec(ca)
+    ca.loader.exec_module(cv)
+
+    y16 = librosa.resample(y, orig_sr=SR, target_sr=16000)
+    prepared = [{"raw": w, "norm": cv.normalize_word(w)} for w in word_list]
+    try:
+        spans, score, _ = va.align_verse(y16, prepared)
+    except Exception as e:
+        return {"error": f"alignment failed: {e}"}
+    if spans is None:
+        return {"aligned": False,
+                "message": "לא הצלחתי ליישר את ההקלטה לטקסט — נסה להקליט שוב",
+                "words": []}
+
+    results, correct, checked = [], 0, 0
+    for i, (w, expected) in enumerate(zip(word_list, taam_list)):
+        if i not in spans or not expected:
+            results.append({"word": w, "expected": expected, "status": "unknown",
+                            "message": "לא נמצאה במיקום ברור בהקלטה"})
+            continue
+        st_, en = spans[i]
+        # the aligner works at 16k, the feature extractor at SR
+        spec = word_spectrogram(y, st_ * SR / 16000, en * SR / 16000)
+        if spec is None:
+            results.append({"word": w, "expected": expected, "status": "unknown",
+                            "message": "המקטע קצר מדי לניתוח"})
+            continue
+        st = get_model()
+        if expected not in st["class_names"]:
+            results.append({"word": w, "expected": expected, "status": "unsupported",
+                            "message": "הטעם הזה עדיין לא נתמך"})
+            continue
+        ok, conf = verify_match(spec, expected)
+        checked += 1
+        correct += 1 if ok else 0
+        top3, _ = classify(spec)
+        results.append({
+            "word": w, "expected": expected,
+            "status": "ok" if ok else "wrong",
+            "confidence": round(float(conf), 3),
+            "heard": top3[0][0] if top3 else None,
+            "start": round(st_, 3), "end": round(en, 3),
+        })
+    return {"aligned": True,
+            "align_score": round(float(score), 3) if score is not None else None,
+            "checked": checked, "correct": correct,
+            "accuracy": round(correct / checked, 3) if checked else None,
+            "words": results}
+
+
 @app.post("/api/analyze")
 async def analyze(audio: UploadFile = File(...)):
     y = load_wav(await audio.read())
@@ -952,6 +1046,120 @@ def get_taam_grammar():
         spec.loader.exec_module(mod)
         _state["taam_grammar"] = mod
     return _state["taam_grammar"]
+
+
+
+# ── practice plan: parasha -> aliya -> verse -> phrase ───────────────────
+BEN13_MAINTEXT = PROJECT_DIR / "data" / "ben13_reading" / "maintext.json"
+BOOK_NAMES = {"1": "Genesis", "2": "Exodus", "3": "Leviticus",
+              "4": "Numbers", "5": "Deuteronomy"}
+PARASHA_NAMES = [
+    "בראשית", "נח", "לך לך", "וירא", "חיי שרה", "תולדות", "ויצא", "וישלח",
+    "וישב", "מקץ", "ויגש", "ויחי", "שמות", "וארא", "בא", "בשלח", "יתרו",
+    "משפטים", "תרומה", "תצוה", "כי תשא", "ויקהל", "פקודי", "ויקרא", "צו",
+    "שמיני", "תזריע", "מצורע", "אחרי מות", "קדושים", "אמור", "בהר", "בחקתי",
+    "במדבר", "נשא", "בהעלתך", "שלח", "קרח", "חקת", "בלק", "פינחס", "מטות",
+    "מסעי", "דברים", "ואתחנן", "עקב", "ראה", "שופטים", "כי תצא", "כי תבוא",
+    "נצבים", "וילך", "האזינו", "וזאת הברכה",
+]
+
+
+def get_practice_index():
+    """parasha -> aliya -> ordered verse refs, from Ben13's own manifest.
+
+    Ben13 already carries the aliya boundaries a reader actually needs, so
+    the practice plan follows the real liturgical division rather than a
+    chapter count the learner will never be asked to read.
+    """
+    if "practice_index" not in _state:
+        idx = {}
+        if BEN13_MAINTEXT.exists():
+            with open(BEN13_MAINTEXT, encoding="utf-8") as f:
+                rows = json.load(f)
+            for r in rows:
+                par, ali, book = r.get("parasha"), r.get("aliya"), r.get("book")
+                if not par or not ali or book not in BOOK_NAMES:
+                    continue
+                if str(r.get("block")) in ("-1", "0"):
+                    continue
+                ref = (BOOK_NAMES[book], int(r["perek"]), int(r["pasuk"]))
+                idx.setdefault(par, {}).setdefault(ali, [])
+                if ref not in idx[par][ali]:
+                    idx[par][ali].append(ref)
+        _state["practice_index"] = idx
+    return _state["practice_index"]
+
+
+@app.get("/api/parashot")
+def parashot():
+    idx = get_practice_index()
+    out = []
+    for i, name in enumerate(PARASHA_NAMES, start=1):
+        aliyot = idx.get(str(i), {})
+        if not aliyot:
+            continue
+        out.append({
+            "id": str(i), "name": name,
+            "aliyot": [{"aliya": a, "verses": len(v)}
+                       for a, v in sorted(aliyot.items(), key=lambda kv: int(kv[0]))],
+            "total_verses": sum(len(v) for v in aliyot.values()),
+        })
+    return {"parashot": out}
+
+
+def phrase_split(tokens):
+    """Split a verse at each disjunctive accent -- the same rule Ben13's own
+    segmentation follows, and the division the ta'amim themselves encode.
+    Practice units are therefore the text's own phrases, not arbitrary
+    chunks of N words."""
+    tg = get_taam_grammar()
+    out, start = [], 0
+    for i, (_, taam) in enumerate(tokens):
+        if taam in tg.DISJUNCTIVE_RANK:
+            out.append((start, i + 1))
+            start = i + 1
+    if start < len(tokens):
+        out.append((start, len(tokens)))
+    return out
+
+
+@app.get("/api/practice_plan")
+def practice_plan(parasha: str, aliya: str):
+    """Everything needed to practise one aliya: its verses, each split into
+    phrases, each phrase carrying its words and their expected ta'amim."""
+    tg = get_taam_grammar()
+    idx = get_practice_index()
+    refs = idx.get(parasha, {}).get(aliya, [])
+    if not refs:
+        return {"error": f"no data for parasha {parasha} aliya {aliya}"}
+    name = PARASHA_NAMES[int(parasha) - 1] if parasha.isdigit() else parasha
+    verses, n_phrases, n_words = [], 0, 0
+    for book, chap, vnum in refs:
+        path = PROJECT_DIR / "Data_Prep" / "sefaria_cache" / f"{book}.{chap}.json"
+        if not path.exists():
+            continue
+        with open(path, encoding="utf-8") as f:
+            cached = json.load(f)
+        if not 0 < vnum <= len(cached):
+            continue
+        raw = cached[vnum - 1]
+        tokens = tg.verse_tokens(raw)
+        if not tokens:
+            continue
+        phrases = []
+        for pi, (lo, hi) in enumerate(phrase_split(tokens)):
+            words = [{"word": w, "taam": t,
+                      "taam_he": tg.TAAM_HE.get(t, t) if t else None}
+                     for w, t in tokens[lo:hi]]
+            phrases.append({"index": pi, "words": words,
+                            "text": " ".join(w["word"] for w in words)})
+            n_words += len(words)
+        n_phrases += len(phrases)
+        verses.append({"ref": f"{book} {chap}:{vnum}", "book": book,
+                       "chapter": chap, "verse": vnum, "phrases": phrases})
+    return {"parasha": parasha, "parasha_name": name, "aliya": aliya,
+            "verses": verses, "counts": {"verses": len(verses),
+                                         "phrases": n_phrases, "words": n_words}}
 
 
 @app.get("/api/verse_tree")
