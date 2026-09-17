@@ -821,6 +821,46 @@ def log_attempt(audio_bytes: bytes, expected_taam: str, is_match: bool, confiden
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
+
+PHRASES_DIR = PROJECT_DIR / "app_assets" / "collected_phrases"
+PHRASES_LOG = PHRASES_DIR / "phrases_log.jsonl"
+
+
+def log_phrase(audio_bytes, words, taamim, result, voice_id, consent):
+    """Keep a consented phrase recording, with the text it was read against.
+
+    This is the growth engine for the corpus, and it is a different shape
+    from log_attempt(): that one keeps only the uncertain single words,
+    because it was built to find Stage B errors. A phrase recording is worth
+    more than that. It arrives already paired with the exact words and
+    ta'amim it was read against, so it needs no manual labelling -- the same
+    CTC alignment that built the whole corpus turns it into training rows
+    (Data_Prep/ingest_collected_phrases.py).
+
+    Every phrase from a learner is therefore a new VOICE, which is the one
+    thing 470 GPU-hours could not produce: the entire corpus is a single
+    reader, and the model scores 15/16 on that reader and 0/2 on another.
+
+    Stored only with explicit consent, only locally, and the voice id is a
+    random handle rather than anything identifying.
+    """
+    if not consent:
+        return None
+    PHRASES_DIR.mkdir(parents=True, exist_ok=True)
+    clip_id = uuid.uuid4().hex[:12]
+    (PHRASES_DIR / f"{clip_id}.wav").write_bytes(audio_bytes)
+    rec = {"clip_id": clip_id, "timestamp": round(time.time(), 3),
+           "voice_id": voice_id or "anon", "words": words, "taamim": taamim,
+           "aligned": bool(result.get("aligned")),
+           "align_score": result.get("align_score"),
+           "correct": result.get("correct"), "wrong": result.get("wrong"),
+           "unsure": result.get("unsure"),
+           "statuses": [w.get("status") for w in result.get("words", [])]}
+    with open(PHRASES_LOG, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return clip_id
+
+
 # ------------------------------------------------------------------- API --
 @app.get("/api/info")
 def info():
@@ -877,7 +917,8 @@ async def practice(clip_id: str, audio: UploadFile = File(...)):
     rec = get_teacher().get(clip_id)
     if rec is None:
         return {"error": "unknown clip"}
-    y = load_wav(await audio.read())
+    raw_audio = await audio.read()
+    y = load_wav(raw_audio)
     curve = f0_curve(y)
     if curve is None:
         return {"error": "no singing detected — sing louder and clearly"}
@@ -1055,7 +1096,9 @@ async def check_phrase(audio: UploadFile = File(...),
                        words: str = Form(...),
                        taamim: str = Form(...),
                        channels: str = Form(""),
-                       genre: str = Form("torah")):
+                       genre: str = Form("torah"),
+                       consent: str = Form(""),
+                       voice_id: str = Form("")):
     """The learning loop's core call: a recording of one phrase, plus the
     words and ta'amim the text requires, in order. Returns a verdict per
     word.
@@ -1075,7 +1118,8 @@ async def check_phrase(audio: UploadFile = File(...),
     if len(word_list) != len(taam_list):
         return {"error": "words and taamim must be the same length"}
 
-    y = load_wav(await audio.read())
+    raw_audio = await audio.read()
+    y = load_wav(raw_audio)
     if y is None or len(y) < SR * 0.2:
         return {"error": "ההקלטה קצרה מדי"}
 
@@ -1155,6 +1199,11 @@ async def check_phrase(audio: UploadFile = File(...),
             "wrong": wrong_n, "unsure": unsure_n,
             "channel_summary": ch_summary,
             "genre": genre,
+            "saved_clip": log_phrase(raw_audio, word_list, taam_list,
+                                     {"aligned": True, "align_score": score,
+                                      "correct": correct, "wrong": wrong_n,
+                                      "unsure": unsure_n, "words": results},
+                                     voice_id, consent.lower() in ("1", "true", "yes")),
             "thresholds": get_calibration(),
             "accuracy": round(correct / checked, 3) if checked else None,
             "words": results}

@@ -117,3 +117,4 @@ features_w2v_seq/
 # Job queue runtime state — every .job file is a generated one-off, and the
 # logs/markers are per-run. The runner itself (run_queue.sh) is tracked.
 jobs/
+app_assets/collected_phrases/
