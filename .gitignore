@@ -118,3 +118,4 @@ features_w2v_seq/
 # logs/markers are per-run. The runner itself (run_queue.sh) is tracked.
 jobs/
 app_assets/collected_phrases/
+features_v3_word_22k/

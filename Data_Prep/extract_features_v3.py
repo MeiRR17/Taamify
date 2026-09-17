@@ -24,6 +24,7 @@ Usage:
 """
 
 import argparse
+import os
 import json
 import time
 from collections import Counter, defaultdict
@@ -43,7 +44,14 @@ WINDOWS = PROJECT_DIR / "stressed_windows.json"
 # stored one. R6 keeps its human-verified onsets.
 VERSE_WINDOWS = PROJECT_DIR / "verse_aligned_windows.json"
 
-SR = 22050
+# Must match the extractor that produced the corpus a model is trained
+# against. Ben13's words are built at ctc_align.SR = 16000, and mixing the
+# two in one training pool silently compares different time scales: with
+# librosa's default hop a frame is 23.2ms at 22050 and 32ms at 16000, so the
+# same 87 frames span 2.02s versus 2.78s. That mismatch made a cross-voice
+# test read 4.38% -- chance -- and it is the same bug that broke the live
+# server. Overridable so the old 22050 features can still be reproduced.
+SR = int(os.environ.get("TAAMIFY_SR", "16000"))
 N_MELS = 128
 FMAX = 8000
 MAX_FRAMES = 87          # ~2.02 s at hop 512, as in v2
