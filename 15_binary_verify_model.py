@@ -70,12 +70,50 @@ class VerifyHead(nn.Module):
         return self.net(torch.cat([emb, candidate_onehot], dim=1)).squeeze(-1)
 
 
-def make_pairs(emb, y, num_classes, seed):
-    """One positive (true class) + one negative (random wrong class) per word."""
+def confusion_partner(cnn_pred, y, num_classes):
+    """For each class, the class the frozen CNN most often mistakes it for.
+
+    This is what a learner's error actually looks like. Nobody sings a
+    random ta'am by accident -- they sing the one that sounds close.
+    """
+    counts = np.zeros((num_classes, num_classes))
+    wrong = cnn_pred != y
+    for t, p in zip(y[wrong], cnn_pred[wrong]):
+        counts[t, p] += 1
+    partner = {}
+    for c in range(num_classes):
+        row = counts[c].copy()
+        row[c] = 0
+        partner[c] = int(row.argmax()) if row.sum() else None
+    return partner
+
+
+def make_pairs(emb, y, num_classes, seed, cnn_pred=None, hard_frac=0.0):
+    """One positive (true class) + one negative per word.
+
+    With hard_frac > 0, that share of negatives is the class the CNN most
+    confuses this one with, instead of a uniformly random wrong class.
+
+    Why this matters, measured: a head trained only on random negatives
+    scores 0.031 mean probability on a random wrong class but 0.217 on the
+    confusable one, and at the 0.5 threshold it accepts 19.7% of confusable
+    wrong readings as correct. On random negatives it accepts 1.9%. The
+    easy negatives taught it almost nothing about the decision that the
+    product actually has to make, because a learner's mistake is never the
+    easy negative.
+    """
     rng = np.random.default_rng(seed)
     n = len(y)
     wrong = rng.integers(0, num_classes - 1, size=n)
     wrong = wrong + (wrong >= y)  # shift past the true class, never equals y
+
+    if hard_frac > 0 and cnn_pred is not None:
+        partner = confusion_partner(cnn_pred, y, num_classes)
+        pick = rng.random(n) < hard_frac
+        for i in np.flatnonzero(pick):
+            p = partner.get(int(y[i]))
+            if p is not None and p != y[i]:
+                wrong[i] = p
 
     emb2 = np.concatenate([emb, emb])
     cand = np.concatenate([y, wrong])
@@ -105,6 +143,18 @@ def main():
     ap.add_argument('--epochs', type=int, default=30)
     ap.add_argument('--batch-size', type=int, default=256)
     ap.add_argument('--seed', type=int, default=0)
+    ap.add_argument('--hard-negatives', type=float, default=0.0,
+                    help="share of negative pairs drawn from the class the CNN "
+                         "most confuses the true one with, instead of a uniform "
+                         "wrong class. Measured on the shipped head (trained "
+                         "with 0.0): it accepts 1.9%% of random wrong readings "
+                         "but 19.7%% of confusable ones -- and a learner's error "
+                         "is always the confusable one.")
+    ap.add_argument('--out', default=None,
+                    help="explicit output path for the trained head. Without "
+                         "it a production run overwrites the single shared "
+                         "name, which has already caused a silent head/CNN "
+                         "mismatch once.")
     args = ap.parse_args()
 
     seq_mod = load_module("sequence_model", "14_sequence_model.py")
@@ -115,7 +165,7 @@ def main():
     train_readers = list(args.readers) if production else \
         [r for r in args.readers if r != args.holdout]
     print(f"embedding train/val readers {train_readers}...")
-    emb_tr, _, y_tr, verses_tr, _, class_names = seq_mod.embed_everything(
+    emb_tr, cnn_pred_tr, y_tr, verses_tr, _, class_names = seq_mod.embed_everything(
         args.checkpoint, train_readers, device, train_mod)
     num_classes = len(class_names)
 
@@ -136,13 +186,25 @@ def main():
 
     emb_train, y_train = emb_tr[~in_val], y_tr[~in_val]
     emb_val, y_val = emb_tr[in_val], y_tr[in_val]
+    pred_train, pred_val = cnn_pred_tr[~in_val], cnn_pred_tr[in_val]
     print(f"words: train {len(y_train)}, val {len(y_val)}"
           + ("" if production else f", test(holdout) {len(y_te)}"))
 
-    Xp_train, Cp_train, Mp_train = make_pairs(emb_train, y_train, num_classes, args.seed)
-    Xp_val, Cp_val, Mp_val = make_pairs(emb_val, y_val, num_classes, args.seed + 1)
+    if args.hard_negatives:
+        print(f"negatives: {args.hard_negatives:.0%} drawn from the CNN's own "
+              f"confusion partner, the rest uniform")
+    Xp_train, Cp_train, Mp_train = make_pairs(
+        emb_train, y_train, num_classes, args.seed,
+        cnn_pred=pred_train, hard_frac=args.hard_negatives)
+    # val/test keep the SAME negative policy, otherwise the reported number
+    # measures an easier task than the one trained for
+    Xp_val, Cp_val, Mp_val = make_pairs(
+        emb_val, y_val, num_classes, args.seed + 1,
+        cnn_pred=pred_val, hard_frac=args.hard_negatives)
     if not production:
-        Xp_test, Cp_test, Mp_test = make_pairs(emb_te, y_te, num_classes, args.seed + 2)
+        Xp_test, Cp_test, Mp_test = make_pairs(
+            emb_te, y_te, num_classes, args.seed + 2,
+            cnn_pred=cnn_preds_te, hard_frac=args.hard_negatives)
 
     emb_dim = emb_tr.shape[1]
     model = VerifyHead(emb_dim, num_classes).to(device)
@@ -203,7 +265,14 @@ def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     if production:
-        ckpt_path = OUT_DIR / "production_verify_head.pth"
+        # Every production run used to write one of two fixed names, so a
+        # second run of a variant silently overwrote the head the server was
+        # loading -- which is exactly how the shipped head came to be trained
+        # against a different CNN than the one being served (2026-09-15).
+        # --out lets seeds and variants coexist.
+        name = ("production_verify_head_hard.pth" if args.hard_negatives
+                else "production_verify_head.pth")
+        ckpt_path = Path(args.out) if args.out else OUT_DIR / name
         torch.save({
             "model_state_dict": model.state_dict(),
             "class_names": list(class_names),

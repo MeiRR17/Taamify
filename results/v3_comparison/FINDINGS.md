@@ -789,3 +789,122 @@ materially different (and much more expensive) experiment.
 - **CRF over the sequence model** — `14_sequence_model.py` has a BiLSTM and no
   transition constraints. The corpus supports it: of 5,785 verses, 5,581 have
   exactly one silluq and 5,424 exactly one etnachta, with **none** having two.
+
+## 12. The verify head's threshold, and where the product actually loses
+
+Station 5 closed the phonology probes with their controls, and the answer is
+clean — the model hears consonants, it is not reading vocabulary:
+
+| probe | balanced | shuffled-label control |
+|---|---|---|
+| dagesh qal (ב/ו · כ/כ׳ · פ/פ׳), 2 seeds | 92.1%, 91.8% | **47.5%** |
+| guttural (ע vs א), 2 seeds | 94.7%, 94.1% | **50.8%** |
+
+Both controls sit on chance, so the ~92-95% is acoustic and not a lookup of
+which words happen to contain which letter.
+
+### The shipped threshold was never chosen, and my own calibration had the two errors backwards
+
+`verify_match()` called a match at `prob >= 0.5` — the number anyone writes
+first. `Data_Prep/calibrate_verify_head.py` was written to replace it, and
+its first version printed the negatives-accepted rate under the heading
+"false alarm" and `1 - recall` under "miss", which is exactly backwards from
+the definitions in its own docstring. The threshold rule inherited the swap:
+it budgeted 2% for the *cheap* error and left the expensive one unbounded,
+recommending 0.60 — where **6% of correct readings get told they are wrong**,
+three times the stated budget for the error the product cannot afford.
+
+Corrected, on eight held-out parashot, with negatives built the way learners
+actually err (the class the classifier most confuses the true one with, not a
+random ta'am):
+
+| head | threshold | contradicts a correct reader | catches realistic mistakes |
+|---|---|---|---|
+| shipped (random negatives) | 0.40 | 1.6% | 77.7% |
+| **hard-negative (50% confusable)** | **0.30** | **1.6%** | **86.0%** |
+
+At an identical trust cost, training the head against confusable negatives
+catches **8.3 points more** of the mistakes a learner actually makes. That
+head is now what `webapp/server.py` serves, with the threshold read from
+`results/calibration/calibration_hard.json` rather than hardcoded.
+
+Three seeds of the same head say why reading it from a file matters:
+
+| seed | threshold | contradicts | catches |
+|---|---|---|---|
+| 0 | 0.350 | 1.6% | 86.0% |
+| 1 | 0.341 | 1.5% | 85.1% |
+| 2 | 0.277 | 1.3% | 84.1% |
+
+**The threshold itself moves by 0.07 across seeds; what it buys does not.**
+The calibration procedure is stable, the number it produces is not — so a
+hardcoded threshold is a bug waiting for the next retrain.
+
+### Noise is not the problem. Coverage is.
+
+The standing worry was that every training word is studio-clean while the
+product runs on a laptop microphone. Measured end to end through
+`/api/check_phrase` — pink noise on the waveform, Ben13 reading his own text,
+so every verdict of "wrong" is a false accusation by construction
+(`Data_Prep/eval_room_noise.py`, 60 phrases, 169 words):
+
+| SNR | phrases aligned | contradicted |
+|---|---|---|
+| clean | 60/60 | 14.2% |
+| 20 dB | 60/60 | 13.6% |
+| 15 dB | 60/60 | 13.6% |
+| 10 dB | 60/60 | 13.6% |
+| 5 dB | 60/60 | 23.2% |
+
+**Down to 10 dB — a fan and a street outside — noise costs nothing**, and
+alignment never once failed. The worry was largely misplaced. What the table
+actually exposes is the 14.2% on *clean* audio, against the 1.6% the
+calibration promises.
+
+`Data_Prep/diagnose_live_crop.py` separates the steps on the same words:
+
+| window | contradicted | MSE vs the stored training window |
+|---|---|---|
+| stored training window | 5.0% | — |
+| recomputed at 16 kHz, stored boundaries | 5.0% | **0.25** |
+| recomputed at 22.05 kHz, stored boundaries | 3.3% | 270.07 |
+| live aligner's own boundaries | 5.1% | — |
+
+Two things fall out. First, the suspicion that sent me here was wrong:
+`extract_features_v3.py` declares `SR = 22050`, so the server's 16 kHz looked
+like a mismatch — but the Ben13 windows were built at 16 kHz, and the 16 kHz
+recomputation reproduces the stored window almost exactly while 22.05 kHz
+does not. The server is right; the constant in the extractor does not
+describe this corpus. Second, **extraction and live alignment are both
+innocent** — all three arms agree.
+
+The gap is which words are being judged. Splitting the live run by whether
+the word exists in the training corpus at all:
+
+| word | n | contradicted |
+|---|---|---|
+| in the training corpus | 86 | 5.8% |
+| absent from it | 39 | **20.5%** |
+
+Roughly a third of what a learner reads was never usable for training, and on
+exactly those words the app is about four times more likely to falsely accuse
+them. Caveat on the number, not the direction: the bucket is defined by exact
+text match against the corpus, which lumps genuine build-time drops together
+with maqaf and normalisation mismatches, and 31% absent is higher than the
+corpus's true ~19% drop rate — so 20.5% is a direction, not yet a figure to
+quote.
+
+The cheap mitigation is available now and needs no model work: the corpus
+already records which words it could not align, so the app can withhold a
+verdict on a word it has no support for instead of guessing at it. The real
+fix is coverage.
+
+### Still open
+
+- **The sequence model's headline is on a leaky split.** 94.6% came from a
+  random verse split; Ben13 is one voice, so neighbouring verses share a
+  recording session. `14_sequence_model.py --holdout-parashot` now exists and
+  the honest number is running.
+- **The FINAL recipe is not an improvement.** On the honest split it scores
+  87.75% against the served checkpoint's 86.92% — 0.8 points, well inside the
+  1.17-point seed SD. No swap.

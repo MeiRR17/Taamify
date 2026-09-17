@@ -263,6 +263,11 @@ def main():
                          "was itself trained without this reader, or the comparison "
                          "is not apples-to-apples with the per-word LORO number. "
                          "Omit for the original random 70/15/15 verse split.")
+    ap.add_argument('--holdout-parashot', type=int, default=0,
+                    help="hold out N whole parashot as the test set. The "
+                         "honest split for a single-voice corpus like Ben13, "
+                         "where the default random verse split leaks a shared "
+                         "recording session across train and test.")
     ap.add_argument('--tag', default=None,
                     help="suffix for the output dir, e.g. holdout reader name")
     ap.add_argument('--crf', action='store_true',
@@ -329,6 +334,25 @@ def main():
         v_test = set(held_verses)
         print(f"LORO split: train/val on {sorted(set(reader_of.values()) - {args.holdout})}, "
               f"test on held-out {args.holdout}")
+    elif args.holdout_parashot:
+        # Ben13 is one voice, so a reader holdout is meaningless and the
+        # random verse split leaks: neighbouring verses of a parasha share a
+        # recording session, a microphone and often a breath. Holding out
+        # whole parashot is the only honest split available for a
+        # single-voice corpus -- the same rule 00_validate_and_prepare_data.py
+        # applies to the per-word model, applied here to the sequence model,
+        # whose headline number had only ever been measured the leaky way.
+        parasha_of = {v: v.split("|")[1] for v in set(verses)}
+        all_par = np.array(sorted(set(parasha_of.values())))
+        rng.shuffle(all_par)
+        held_par = set(all_par[:args.holdout_parashot].tolist())
+        rest = np.array(sorted(v for v, p in parasha_of.items() if p not in held_par))
+        rng.shuffle(rest)
+        v_test = {v for v, p in parasha_of.items() if p in held_par}
+        v_train = set(rest[:int(0.85 * len(rest))])
+        v_val = set(rest[int(0.85 * len(rest)):])
+        print(f"parasha split: {args.holdout_parashot} whole parashot held out "
+              f"({sorted(held_par)}), {len(v_test)} test verses")
     else:
         unique_verses = np.array(sorted(set(verses)))
         rng.shuffle(unique_verses)

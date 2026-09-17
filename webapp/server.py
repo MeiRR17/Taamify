@@ -49,7 +49,19 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 TEACHER_DIR = PROJECT_DIR / "app_assets" / "teacher"
 TEACHER_JSON = PROJECT_DIR / "app_assets" / "teacher_contours.json"
-VERIFY_HEAD_PATH = PROJECT_DIR / "results" / "binary_verify" / "production_verify_head.pth"
+# Trained with hard negatives (the class the CNN itself confuses this one
+# with), not random ones. Measured: a head trained on random negatives lets
+# 19.7% of realistic learner mistakes through at the same contradiction rate;
+# this one lets 9.9% through. A learner's error is never a random ta'am.
+# NOTE: sweep jobs must COPY this file, never mv it -- a `mv` in a queued job
+# once deleted the head out from under the running server.
+VERIFY_HEAD_PATH = PROJECT_DIR / "results" / "binary_verify" / "production_verify_head_hard.pth"
+# Derived by Data_Prep/derive_neutral_band.py, which sets TWO thresholds
+# against two different error budgets. The earlier file collapsed them to one
+# number, which silently removed the neutral state the product depends on:
+# every word was forced into "correct" or "wrong", including the ones the
+# model had no real opinion about.
+CALIBRATION_PATH = PROJECT_DIR / "results" / "calibration" / "calibration.json"
 ATTEMPTS_DIR = PROJECT_DIR / "app_assets" / "collected_attempts"
 ATTEMPTS_LOG = ATTEMPTS_DIR / "attempts_log.jsonl"
 BEN13_SEGMENTS_DIR = PROJECT_DIR / "data" / "ben13_segments"
@@ -86,6 +98,41 @@ app = FastAPI(title="Taamify")
 _state = {}
 
 
+HAFTARA_CKPT = (PROJECT_DIR /
+                "results/random_top21_haftmix_FINAL/deep_cnn/deep_cnn_best.pth")
+
+
+def get_haftara_model():
+    """Separate model for haftara reading.
+
+    The two genres gave OPPOSITE answers to the same question, measured
+    head to head: adding haftara to the Torah model cost 7.8 points, while
+    adding Torah to the haftara model gained 4.4. Haftara has only 25,214
+    words -- too few to stand alone -- while the Torah's 64,649 are already
+    enough and the haftara only adds noise. So: two models, and the app
+    picks by what the learner is actually preparing.
+    """
+    if "haftara" not in _state:
+        _state["haftara"] = None
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "tp", PROJECT_DIR / "10_train_pipeline.py")
+            tp = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(tp)
+            ck = torch.load(HAFTARA_CKPT, map_location="cpu", weights_only=False)
+            model = tp.MODEL_REGISTRY[ck["architecture"]](
+                num_classes=len(ck["class_names"]))
+            model.load_state_dict(ck["model_state_dict"])
+            st = get_model()
+            model.eval().to(st["device"])
+            _state["haftara"] = {"model": model,
+                                 "class_names": list(ck["class_names"]),
+                                 "device": st["device"]}
+        except Exception as e:
+            print(f"  haftara model unavailable ({e})")
+    return _state["haftara"]
+
+
 def get_model():
     if "model" not in _state:
         spec = importlib.util.spec_from_file_location(
@@ -106,7 +153,7 @@ def get_model():
         # 87.9% on a random split, 86.9% with eight whole parashot held out
         # (the honest number for a single-voice corpus), and the verify head
         # trained on THIS checkpoint's embedding space scores 97.5%.
-        ckpt_path = PROJECT_DIR / "results/random_top21_torahship/deep_cnn/deep_cnn_best.pth"
+        ckpt_path = PROJECT_DIR / "results/random_top21_torahship_FINAL/deep_cnn/deep_cnn_best.pth"
         ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
         model = tp.MODEL_REGISTRY[ckpt["architecture"]](
             num_classes=len(ckpt["class_names"]))
@@ -115,6 +162,7 @@ def get_model():
         model.eval().to(device)
         _state.update(model=model, device=device,
                       class_names=ckpt["class_names"],
+                      ckpt_path=str(ckpt_path),
                       test_acc=ckpt.get("test_metrics", {}).get("accuracy"))
     return _state
 
@@ -135,6 +183,18 @@ def get_verify_head():
             raise RuntimeError(
                 "verify-head class_names don't match the loaded CNN's -- it "
                 "was trained against a different checkpoint's embedding space")
+        # Class names alone are not enough. Two runs of the same recipe produce
+        # identical class lists and different embedding spaces, and on
+        # 2026-09-15 the shipped head was found to have been trained against
+        # random_top21_torahship_FINAL while the server was serving
+        # random_top21_torahship -- no error, no 500, just quietly wrong
+        # scores. The checkpoint path is what actually pins the pairing.
+        trained_against = ckpt.get("cnn_checkpoint")
+        if trained_against and Path(trained_against).resolve() != Path(st["ckpt_path"]).resolve():
+            raise RuntimeError(
+                f"verify head was trained against {trained_against}, but the "
+                f"server is serving {st['ckpt_path']} -- retrain the head "
+                f"against the served checkpoint (15_binary_verify_model.py)")
         head = bv.VerifyHead(ckpt["emb_dim"], len(ckpt["class_names"]), ckpt["hidden"])
         head.load_state_dict(ckpt["model_state_dict"])
         head.eval().to(st["device"])
@@ -640,8 +700,9 @@ def tag_verse(specs):
             for i, p in enumerate(path)]
 
 
-def classify(spec, top_k=3):
-    st = get_model()
+def classify(spec, top_k=3, genre="torah"):
+    st = get_haftara_model() if genre == "haftara" else None
+    st = st or get_model()
     spec = (spec - spec.mean()) / (spec.std() + 1e-8)
     x = torch.from_numpy(spec)[None, None].to(st["device"])
     with torch.no_grad():
@@ -669,6 +730,27 @@ def embed(spec):
     return captured[0][0].numpy()
 
 
+def get_calibration():
+    """Decision thresholds, measured on held-out parashot rather than guessed.
+
+    The two mistakes cost different amounts. Telling a learner who read
+    CORRECTLY that they were wrong costs trust, and a child who is
+    contradicted while right stops believing the feedback. Staying quiet
+    about a real mistake costs one uncorrected error in a practice session.
+    So the threshold is chosen to hold contradictions under 2% and accept
+    the misses that follow -- not to maximise accuracy.
+    See Data_Prep/calibrate_verify_head.py.
+    """
+    if "calibration" not in _state:
+        default = {"say_wrong_below": 0.30, "say_correct_above": 0.30}
+        try:
+            default.update(json.loads(CALIBRATION_PATH.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            pass
+        _state["calibration"] = default
+    return _state["calibration"]
+
+
 def verify_match(spec, expected_taam):
     """Stage A: does this spectrogram match expected_taam? Returns
     (is_match, confidence) -- confidence is the model's own sigmoid
@@ -683,7 +765,7 @@ def verify_match(spec, expected_taam):
     onehot[0, idx] = 1.0
     with torch.no_grad():
         prob = torch.sigmoid(head(emb, onehot)).item()
-    return prob >= 0.5, prob
+    return prob >= get_calibration()["say_wrong_below"], prob
 
 
 def f0_curve(y, n_points=60):
@@ -859,10 +941,121 @@ async def verify_reading(audio: UploadFile = File(...), expected_taam: str = For
 
 
 
+
+# ── extra channels: stress, dagesh, gutturals ────────────────────────────
+# Each is an independent CNN over the SAME 128x87 word spectrogram, trained
+# on the same corpus with a different label set. Measured on held-out
+# parashot (balanced accuracy, trivial baseline 50%):
+#   stress (milra vs mil'el)  93.5%
+#   dagesh kal (b/v, k/kh)    93.1%
+#   ayin vs alef              95.1%
+# The expected answer for each comes from the POINTED TEXT, not from a model,
+# so a mismatch is a real reading error rather than two models disagreeing.
+CHANNELS = {
+    "stress":   {"dir": "results/stress8_stress_PROD",
+                 "classes": ["milra", "milel"], "he": "הטעמה"},
+    "dagesh":   {"dir": "results/dagesh8_p_PROD",
+                 "classes": ["no_dagesh", "dagesh"], "he": "דגש קל"},
+    "guttural": {"dir": "results/guttural8_p_PROD",
+                 "classes": ["alef", "ayin"], "he": "ע׳ / א׳"},
+}
+BEGADKEFAT = set("בגדכפת")
+DAGESH_MARK = "\u05bc"
+
+
+def get_channel(name):
+    """Load one extra-channel CNN, cached. Returns None when the checkpoint is
+    missing, so a channel can be absent without taking the endpoint down."""
+    key = f"channel_{name}"
+    if key not in _state:
+        _state[key] = None
+        try:
+            cfg = CHANNELS[name]
+            ck_path = next((PROJECT_DIR / cfg["dir"]).glob("*/*_best.pth"))
+            spec = importlib.util.spec_from_file_location(
+                "tp", PROJECT_DIR / "10_train_pipeline.py")
+            tp = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(tp)
+            ck = torch.load(ck_path, map_location="cpu", weights_only=False)
+            model = tp.MODEL_REGISTRY[ck["architecture"]](
+                num_classes=len(ck["class_names"]))
+            model.load_state_dict(ck["model_state_dict"])
+            st = get_model()
+            model.eval().to(st["device"])
+            _state[key] = {"model": model, "classes": list(ck["class_names"]),
+                           "he": cfg["he"]}
+        except Exception as e:
+            print(f"  channel {name} unavailable ({e})")
+    return _state[key]
+
+
+def hebrew_letters(w):
+    return [c for c in w if "\u05d0" <= c <= "\u05ea"]
+
+
+def expected_channel_label(name, pointed_word):
+    """What the TEXT requires for this channel, or None when the word cannot
+    carry the distinction at all -- a word with two begadkefat letters gives
+    an ambiguous whole-word label, so it is skipped rather than guessed."""
+    if not pointed_word:
+        return None
+    if name == "stress":
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "ss", PROJECT_DIR / "Data_Prep" / "stressed_syllable.py")
+            ss = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(ss)
+            r = ss.stressed_syllable(pointed_word)
+        except Exception:
+            return None
+        if not r or not r.get("ok") or r["n_syllables"] < 2:
+            return None
+        return {1: "milra", 2: "milel"}.get(r["from_end"])
+    L = hebrew_letters(pointed_word)
+    if name == "dagesh":
+        b = [c for c in L if c in BEGADKEFAT]
+        if len(b) != 1:
+            return None
+        i = pointed_word.index(b[0])
+        return "dagesh" if DAGESH_MARK in pointed_word[i:i + 3] else "no_dagesh"
+    if name == "guttural":
+        a = [c for c in L if c in "\u05e2\u05d0"]
+        if len(a) != 1:
+            return None
+        return "ayin" if a[0] == "\u05e2" else "alef"
+    return None
+
+
+def run_channels(spec_img, pointed_word, wanted=None):
+    """Every extra channel that applies to this word. Silent on the ones that
+    do not apply, rather than reporting a meaningless verdict."""
+    out = {}
+    for name in (wanted or CHANNELS):
+        expected = expected_channel_label(name, pointed_word)
+        if expected is None:
+            continue
+        ch = get_channel(name)
+        if ch is None:
+            continue
+        st = get_model()
+        x = ((spec_img - spec_img.mean()) / (spec_img.std() + 1e-8))
+        t = torch.from_numpy(x)[None, None].to(st["device"])
+        with torch.no_grad():
+            probs = torch.softmax(ch["model"](t), dim=1)[0].cpu().numpy()
+        heard = ch["classes"][int(probs.argmax())]
+        conf = float(probs.max())
+        out[name] = {"expected": expected, "heard": heard,
+                     "status": "ok" if heard == expected else "wrong",
+                     "confidence": round(conf, 3), "he": ch["he"]}
+    return out
+
+
 @app.post("/api/check_phrase")
 async def check_phrase(audio: UploadFile = File(...),
                        words: str = Form(...),
-                       taamim: str = Form(...)):
+                       taamim: str = Form(...),
+                       channels: str = Form(""),
+                       genre: str = Form("torah")):
     """The learning loop's core call: a recording of one phrase, plus the
     words and ta'amim the text requires, in order. Returns a verdict per
     word.
@@ -876,6 +1069,7 @@ async def check_phrase(audio: UploadFile = File(...),
     a child "wrong" when the system simply lost the word is the most costly
     error this product can make.
     """
+    wanted = [c.strip() for c in channels.split(",") if c.strip() in CHANNELS] or None
     word_list = [w for w in json.loads(words) if w.strip()]
     taam_list = json.loads(taamim)
     if len(word_list) != len(taam_list):
@@ -924,21 +1118,84 @@ async def check_phrase(audio: UploadFile = File(...),
                             "message": "הטעם הזה עדיין לא נתמך"})
             continue
         ok, conf = verify_match(spec, expected)
+        cal = get_calibration()
+        # Three states, not two. Between the thresholds the model has no real
+        # opinion, and the honest answer is a neutral mark rather than a
+        # verdict -- contradicting a learner who read correctly is the one
+        # mistake this product cannot afford to make often.
+        if conf >= cal["say_correct_above"]:
+            status = "ok"
+        elif conf < cal["say_wrong_below"]:
+            status = "wrong"
+        else:
+            status = "unsure"
         checked += 1
-        correct += 1 if ok else 0
-        top3, _ = classify(spec)
+        correct += 1 if status == "ok" else 0
+        top3, _ = classify(spec, genre=genre)
+        extra = run_channels(spec, w, wanted)
         results.append({
             "word": w, "expected": expected,
-            "status": "ok" if ok else "wrong",
+            "status": status,
+            "channels": extra,
             "confidence": round(float(conf), 3),
             "heard": top3[0][0] if top3 else None,
             "start": round(st_, 3), "end": round(en, 3),
         })
+    ch_summary = {}
+    for r in results:
+        for name, v in (r.get("channels") or {}).items():
+            c = ch_summary.setdefault(name, {"he": v["he"], "checked": 0, "correct": 0})
+            c["checked"] += 1
+            c["correct"] += 1 if v["status"] == "ok" else 0
+    wrong_n = sum(1 for r in results if r.get("status") == "wrong")
+    unsure_n = sum(1 for r in results if r.get("status") in ("unsure", "unknown"))
     return {"aligned": True,
             "align_score": round(float(score), 3) if score is not None else None,
             "checked": checked, "correct": correct,
+            "wrong": wrong_n, "unsure": unsure_n,
+            "channel_summary": ch_summary,
+            "genre": genre,
+            "thresholds": get_calibration(),
             "accuracy": round(correct / checked, 3) if checked else None,
             "words": results}
+
+
+@app.get("/api/genres")
+def genres():
+    """Which reading genres the server can score. The app should send the one
+    the learner picked; sending the wrong one costs real accuracy, because
+    the two models were trained on deliberately different mixes."""
+    return {"torah": {"available": True, "he": "תורה",
+                      "honest_accuracy": 0.869},
+            "haftara": {"available": get_haftara_model() is not None,
+                        "he": "הפטרה", "honest_accuracy": 0.783}}
+
+
+@app.get("/api/verify_config")
+def verify_config():
+    """What the confidence numbers in /api/check_phrase actually mean.
+
+    Exposed so the UI can draw its own line instead of hardcoding one. Every
+    rate below was measured on eight whole parashot the model never trained
+    on, with mistakes built the way learners actually make them -- the ta'am
+    the classifier most confuses the right one with, not a random ta'am.
+    """
+    cal = get_calibration()
+    return {
+        "say_wrong_below": cal["say_wrong_below"],
+        "say_correct_above": cal["say_correct_above"],
+        "measured": {
+            "contradicts_correct_rate": cal.get("contradicts_correct_rate"),
+            "lets_confusable_mistake_through": cal.get("lets_confusable_mistake_through"),
+            "held_out_parashot": cal.get("held_out_parashot"),
+            "n_positives": cal.get("n_positives"),
+        },
+        "note": ("below say_wrong_below -> safe to tell the learner they were "
+                 "wrong; at or above say_correct_above -> safe to confirm; "
+                 "between the two -> show a neutral mark and no verdict. When "
+                 "the two are equal the measured distributions did not overlap "
+                 "and no neutral zone is needed."),
+    }
 
 
 @app.post("/api/analyze")

@@ -85,6 +85,9 @@ def build():
     q = queue_state()
     recordings = len(list((P / "incoming").glob("*.json"))) if (P / "incoming").exists() else 0
 
+    def bal(path):
+        return metric(path, "balanced_accuracy")
+
     layers = [
         ("מודל תורה (CNN)", metric("results/random_top21_torahship_FINAL/deep_cnn/deep_cnn_metrics.json"),
          "פרשות בצד: 86.9%", served.get("cnn", "").startswith("results/random_top21_torahship")),
@@ -92,19 +95,23 @@ def build():
         ("ראש אימות (Stage A)", 97.71, "השאלה שהמוצר שואל", bool(served.get("verify"))),
         ("מודל הפטרה", metric("results/random_top21_haftmix_FINAL/deep_cnn/deep_cnn_metrics.json"),
          "תורה+הפטרה מאוזן", False),
-        ("זיהוי הטעמה", metric("results/stress8_stress/deep_cnn/deep_cnn_metrics.json",
-                               "balanced_accuracy"), "מאוזן, מול בסיס 50%", False),
-        ("דגש קל", metric("results/dagesh8_p/deep_cnn/deep_cnn_metrics.json",
-                          "balanced_accuracy"), "ב/ו · כ/כ׳ · פ/פ׳", False),
-        ("ע׳ מול א׳", metric("results/guttural8_p/deep_cnn/deep_cnn_metrics.json",
-                             "balanced_accuracy"), "מה שמסמן את המסורת", False),
+        ("זיהוי הטעמה", bal("results/stress8_stress_PROD/deep_cnn/deep_cnn_metrics.json"),
+         "מאוזן, בסיס טריוויאלי 50%", False),
+        ("דגש קל", bal("results/dagesh8_p_PROD/deep_cnn/deep_cnn_metrics.json"),
+         "ב/ו · כ/כ׳ · פ/פ׳", False),
+        ("ע׳ מול א׳", bal("results/guttural8_p_PROD/deep_cnn/deep_cnn_metrics.json"),
+         "ההבחנה שמסמנת את המסורת", False),
+        ("חסינות רעש רקע", metric("results/random_top21_torahship_noiseprod/deep_cnn/deep_cnn_metrics.json"),
+         "מיקרופון לפטופ בחדר", False),
+        ("25 מחלקות (כולל נדירים)", metric("results/random_top21_rare/deep_cnn/deep_cnn_metrics.json"),
+         "כיסוי מלא", False),
     ]
     stations = [
-        (0, "מנוע המנגינה", 100, "הושלם"), (1, "קול שני", 0, "חסום"),
+        (0, "מנוע המנגינה", 100, "הושלם"), (1, "קול שני", 0, "ממתין להקלטות"),
         (2, "שגיאות אמיתיות", 10, "ממתין"), (3, "יישור הברות", 30, "לא קריטי"),
-        (4, "מלעיל/מלרע", 100, "נסגר"), (5, "עיצורים", 60, "רץ"),
+        (4, "מלעיל/מלרע", 100, "נסגר"), (5, "עיצורים", 100, "נסגר"),
         (6, "שווא וקמץ קטן", 0, "לא התחיל"), (7, "דוח מאוחד", 15, "ממתין"),
-        (8, "אפליקציה", 20, "מתחיל"), (9, "עוד קולות", 0, "חסום"),
+        (8, "אפליקציה", 45, "בפיתוח אצלך"), (9, "עוד קולות", 0, "חסום"),
         (10, "נוסחים נוספים", 0, "עתידי"),
     ]
 

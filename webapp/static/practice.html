@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>תרגול · טעמיפיי</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+Hebrew:wght@400;600&family=Heebo:wght@300;400;500;700&display=swap">
+<style>
+:root{
+  --bg:#FAF8F3; --surface:#fff; --surface2:#F0EDE5; --ink:#15181E; --ink2:#525862;
+  --ink3:#8A9099; --line:#E3DFD5;
+  --acc:#1B6E88; --acc-soft:#E3EFF3; --gold:#8A5F16; --gold-soft:#F6EDD6;
+  --ok:#2E7D57; --ok-soft:#E2F1E9; --bad:#B34A33; --bad-soft:#FAE8E3;
+  --shadow:0 1px 2px rgba(21,24,30,.05),0 12px 28px -20px rgba(21,24,30,.4);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#10131A; --surface:#181C24; --surface2:#20252E; --ink:#ECEAE4; --ink2:#A0A7B2;
+  --ink3:#6C737D; --line:#272D37;
+  --acc:#4BA3BE; --acc-soft:#132B33; --gold:#C79A3E; --gold-soft:#2A2315;
+  --ok:#4C9E76; --ok-soft:#14291F; --bad:#C8674E; --bad-soft:#2C1915;
+  --shadow:0 1px 2px rgba(0,0,0,.5),0 12px 28px -20px #000;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:400 15px/1.7 Heebo,-apple-system,BlinkMacSystemFont,sans-serif;
+  -webkit-text-size-adjust:100%}
+.wrap{max-width:680px;margin:0 auto;padding:16px 16px 210px}
+
+header{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+h1{font:700 19px/1.3 Heebo;margin:0}
+.sub{color:var(--ink3);font-size:12.5px}
+select,button{font:500 14px Heebo;border-radius:10px;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink);padding:9px 12px;cursor:pointer}
+select:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button:hover:not(:disabled){border-color:var(--acc)}
+button:disabled{opacity:.4;cursor:default}
+.pick{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+
+.prog{display:flex;align-items:center;gap:9px;margin-bottom:18px}
+.track{flex:1;height:8px;background:var(--surface2);border-radius:99px;overflow:hidden}
+.track i{display:block;height:100%;background:var(--ok);border-radius:99px;
+  transition:width .4s ease;width:0}
+.pct{font-size:12.5px;color:var(--ink2);white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;
+  padding:20px;box-shadow:var(--shadow)}
+.meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.ref{font-size:12.5px;color:var(--ink3)}
+.pill{font-size:10.5px;font-weight:500;padding:3px 9px;border-radius:99px;
+  border:1px solid var(--line);color:var(--ink3)}
+.pill.mastered{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
+.pill.weak{border-color:var(--bad);color:var(--bad);background:var(--bad-soft)}
+
+.phrase{font:400 32px/2.05 "Noto Serif Hebrew",serif;margin:8px 0 6px;
+  word-spacing:.1em}
+.phrase .w{padding:2px 5px;border-radius:7px;transition:background .25s}
+.phrase .w.ok{background:var(--ok-soft)}
+.phrase .w.wrong{background:var(--bad-soft)}
+.phrase .w.unknown{background:var(--surface2)}
+
+.taamrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;padding-top:12px;
+  border-top:1px solid var(--line)}
+.taam{font-size:11.5px;padding:4px 9px;border-radius:99px;background:var(--gold-soft);
+  color:var(--gold);border:1px solid transparent}
+.taam.ok{background:var(--ok-soft);color:var(--ok)}
+.taam.wrong{background:var(--bad-soft);color:var(--bad)}
+.taam.unknown{background:var(--surface2);color:var(--ink3)}
+
+.verdict{margin-top:14px;padding:13px 15px;border-radius:12px;font-size:14px;
+  line-height:1.7;display:none}
+.verdict.show{display:block}
+.verdict.good{background:var(--ok-soft);color:var(--ok)}
+.verdict.mixed{background:var(--gold-soft);color:var(--gold)}
+.verdict.poor{background:var(--bad-soft);color:var(--bad)}
+.verdict b{font-weight:700}
+.detail{margin-top:9px;font-size:12.5px;color:var(--ink2);line-height:1.8}
+.detail div{margin:2px 0}
+
+.nav{display:flex;gap:8px;margin-top:16px}
+.nav button{flex:1}
+
+.dock{position:fixed;bottom:0;right:0;left:0;background:var(--surface);
+  border-top:1px solid var(--line);
+  padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+  box-shadow:0 -10px 30px -24px rgba(0,0,0,.6)}
+.dockin{max-width:680px;margin:0 auto;display:flex;align-items:center;gap:13px}
+.rec{width:68px;height:68px;border-radius:50%;border:2px solid var(--line);
+  background:var(--surface2);display:grid;place-items:center;flex:none;padding:0}
+.rec .dot{width:23px;height:23px;border-radius:50%;background:var(--bad);transition:.2s}
+.rec[data-on="1"]{border-color:var(--bad);animation:pulse 1.4s ease-in-out infinite}
+.rec[data-on="1"] .dot{border-radius:5px;width:20px;height:20px}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(179,74,51,.32)}
+  50%{box-shadow:0 0 0 13px rgba(179,74,51,0)}}
+@media (prefers-reduced-motion:reduce){.rec[data-on="1"]{animation:none}}
+.dockinfo{flex:1;min-width:0}
+.status{font-size:13.5px;font-weight:500}
+.hint{font-size:11.5px;color:var(--ink3);margin-top:2px}
+.listen{font-size:12.5px;padding:7px 12px;white-space:nowrap}
+
+.map{margin-top:22px}
+.map h2{font:500 13px Heebo;color:var(--ink3);margin:0 0 9px}
+.cells{display:grid;grid-template-columns:repeat(auto-fill,minmax(26px,1fr));gap:4px}
+.cell{aspect-ratio:1;border-radius:5px;background:var(--surface2);cursor:pointer;
+  border:1px solid transparent}
+.cell.ok{background:var(--ok)}
+.cell.weak{background:var(--bad)}
+.cell.cur{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-soft)}
+.legend{display:flex;gap:13px;font-size:11px;color:var(--ink3);margin-top:9px;flex-wrap:wrap}
+.legend span{display:flex;align-items:center;gap:5px}
+.legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+.empty{color:var(--ink3);font-size:13.5px;padding:26px 0;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>תרגול</h1>
+    <span class="sub" id="planinfo">טוען…</span>
+  </header>
+
+  <div class="pick">
+    <select id="parasha"></select>
+    <select id="aliya"></select>
+  </div>
+
+  <div class="prog">
+    <div class="track"><i id="fill"></i></div>
+    <span class="pct" id="pct">—</span>
+  </div>
+
+  <div class="card" id="card">
+    <div class="empty">בחר פרשה ועלייה כדי להתחיל</div>
+  </div>
+
+  <div class="map" id="mapwrap" hidden>
+    <h2>כל הקטעים בעלייה</h2>
+    <div class="cells" id="cells"></div>
+    <div class="legend">
+      <span><i style="background:var(--ok)"></i>נשלט</span>
+      <span><i style="background:var(--bad)"></i>צריך חזרה</span>
+      <span><i style="background:var(--surface2)"></i>טרם תורגל</span>
+    </div>
+  </div>
+</div>
+
+<div class="dock">
+  <div class="dockin">
+    <button class="rec" id="rec" data-on="0" aria-label="הקלט"><span class="dot"></span></button>
+    <div class="dockinfo">
+      <div class="status" id="status">בחר קטע והקלט</div>
+      <div class="hint" id="hint">קרא את הקטע בטעמים, בקצב טבעי</div>
+    </div>
+    <button class="listen" id="listen" disabled>▶ שמע</button>
+  </div>
+</div>
+<audio id="player" style="display:none"></audio>
+
+<script>
+const $ = id => document.getElementById(id);
+const LS = "taamify_practice_v1";
+let plan = null, flat = [], cur = 0, media = null, chunks = [], progress = {};
+try { progress = JSON.parse(localStorage.getItem(LS) || "{}"); } catch (e) { progress = {}; }
+
+const save = () => { try { localStorage.setItem(LS, JSON.stringify(progress)); } catch (e) {} };
+const keyOf = p => `${plan.parasha}/${plan.aliya}/${p.ref}/${p.index}`;
+
+async function boot() {
+  const d = await fetch("/api/parashot").then(r => r.json());
+  const ps = $("parasha");
+  d.parashot.forEach(p => {
+    const o = document.createElement("option");
+    o.value = p.id; o.textContent = `${p.id}. ${p.name}`;
+    o.dataset.aliyot = p.aliyot.length;
+    ps.appendChild(o);
+  });
+  ps.addEventListener("change", fillAliyot);
+  $("aliya").addEventListener("change", loadPlan);
+  fillAliyot();
+}
+
+function fillAliyot() {
+  const n = +$("parasha").selectedOptions[0].dataset.aliyot || 7;
+  const a = $("aliya"); a.innerHTML = "";
+  const names = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שביעי"];
+  for (let i = 1; i <= n; i++) {
+    const o = document.createElement("option");
+    o.value = String(i); o.textContent = names[i - 1] || i;
+    a.appendChild(o);
+  }
+  loadPlan();
+}
+
+async function loadPlan() {
+  $("planinfo").textContent = "טוען…";
+  const p = $("parasha").value, al = $("aliya").value;
+  plan = await fetch(`/api/practice_plan?parasha=${p}&aliya=${al}`).then(r => r.json());
+  if (plan.error) { $("planinfo").textContent = plan.error; return; }
+  flat = [];
+  plan.verses.forEach(v => v.phrases.forEach(ph =>
+    flat.push({ ...ph, ref: v.ref, book: v.book, chapter: v.chapter, verse: v.verse })));
+  cur = flat.findIndex(p => !progress[keyOf(p)]?.mastered);
+  if (cur < 0) cur = 0;
+  $("planinfo").textContent =
+    `${plan.counts.verses} פסוקים · ${plan.counts.phrases} קטעים`;
+  $("mapwrap").hidden = false;
+  render();
+}
+
+function render() {
+  if (!flat.length) return;
+  const p = flat[cur], st = progress[keyOf(p)] || {};
+  const last = st.last;
+  const cls = i => last?.words?.[i]?.status || "";
+  $("card").innerHTML = `
+    <div class="meta">
+      <span class="ref">${p.ref} · קטע ${p.index + 1}</span>
+      ${st.mastered ? '<span class="pill mastered">✓ נשלט</span>' : ""}
+      ${st.attempts && !st.mastered ? `<span class="pill weak">${st.attempts} ניסיונות</span>` : ""}
+    </div>
+    <div class="phrase">${p.words.map((w, i) =>
+      `<span class="w ${cls(i)}">${w.word}</span>`).join(" ")}</div>
+    <div class="taamrow">${p.words.map((w, i) =>
+      `<span class="taam ${cls(i)}">${w.taam_he || "—"}</span>`).join("")}</div>
+    <div class="verdict" id="verdict"></div>
+    <div class="nav">
+      <button id="prev">← הקודם</button>
+      <button id="next">הבא →</button>
+    </div>`;
+  $("prev").disabled = cur === 0;
+  $("next").disabled = cur === flat.length - 1;
+  $("prev").onclick = () => { cur--; render(); };
+  $("next").onclick = () => { cur++; render(); };
+  $("listen").disabled = false;
+  if (last) showVerdict(last, true);
+  drawMap();
+  const done = flat.filter(x => progress[keyOf(x)]?.mastered).length;
+  $("fill").style.width = (done / flat.length * 100) + "%";
+  $("pct").textContent = `${done} / ${flat.length}`;
+}
+
+function drawMap() {
+  const c = $("cells"); c.innerHTML = "";
+  flat.forEach((p, i) => {
+    const st = progress[keyOf(p)] || {};
+    const b = document.createElement("button");
+    b.className = "cell" + (st.mastered ? " ok" : st.attempts ? " weak" : "") +
+      (i === cur ? " cur" : "");
+    b.title = `${p.ref} · קטע ${p.index + 1}`;
+    b.onclick = () => { cur = i; render(); window.scrollTo({ top: 0, behavior: "smooth" }); };
+    c.appendChild(b);
+  });
+}
+
+// ── recording ───────────────────────────────────────────────────────────
+async function toggle() {
+  if (media && media.state === "recording") { media.stop(); return; }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: false,
+               noiseSuppression: false, autoGainControl: false } });
+  } catch (e) {
+    $("status").textContent = "אין גישה למיקרופון"; return;
+  }
+  const ac = new AudioContext();
+  const src = ac.createMediaStreamSource(stream);
+  const proc = ac.createScriptProcessor(4096, 1, 1);
+  chunks = [];
+  src.connect(proc); proc.connect(ac.destination);
+  proc.onaudioprocess = e => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  media = { state: "recording", stop() {
+    proc.disconnect(); src.disconnect();
+    stream.getTracks().forEach(t => t.stop());
+    const sr = ac.sampleRate; ac.close();
+    media = null; $("rec").dataset.on = "0";
+    finish(encodeWav(merge(chunks), sr));
+  } };
+  $("rec").dataset.on = "1";
+  $("status").textContent = "מקליט…";
+  $("hint").textContent = "לחץ שוב לעצירה";
+}
+
+const merge = cs => { const n = cs.reduce((a, c) => a + c.length, 0);
+  const o = new Float32Array(n); let k = 0; cs.forEach(c => { o.set(c, k); k += c.length; });
+  return o; };
+
+function encodeWav(s, sr) {
+  const b = new ArrayBuffer(44 + s.length * 2), v = new DataView(b);
+  const wr = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+  wr(0, "RIFF"); v.setUint32(4, 36 + s.length * 2, true); wr(8, "WAVE"); wr(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true); wr(36, "data"); v.setUint32(40, s.length * 2, true);
+  for (let i = 0; i < s.length; i++) { const x = Math.max(-1, Math.min(1, s[i]));
+    v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true); }
+  return new Blob([b], { type: "audio/wav" });
+}
+
+async function finish(blob) {
+  const p = flat[cur];
+  $("status").textContent = "בודק…";
+  $("hint").textContent = "מיישר את ההקלטה לטקסט";
+  const fd = new FormData();
+  fd.append("audio", blob, "rec.wav");
+  fd.append("words", JSON.stringify(p.words.map(w => w.word)));
+  fd.append("taamim", JSON.stringify(p.words.map(w => w.taam)));
+  let d;
+  try { d = await fetch("/api/check_phrase", { method: "POST", body: fd }).then(r => r.json()); }
+  catch (e) { $("status").textContent = "שגיאת רשת"; return; }
+  if (d.error || d.aligned === false) {
+    $("status").textContent = "לא הצלחתי לקרוא את ההקלטה";
+    $("hint").textContent = d.message || d.error || "נסה שוב, קצת יותר לאט";
+    return;
+  }
+  const key = keyOf(p);
+  const st = progress[key] || { attempts: 0 };
+  st.attempts++; st.last = d;
+  // "mastered" means every word the system could actually judge came back
+  // right. A word it could not place does not count against the learner --
+  // telling a child "wrong" when the aligner simply lost the word is the
+  // most expensive mistake this product can make.
+  st.mastered = d.checked > 0 && d.correct === d.checked;
+  progress[key] = st; save();
+  render();
+  showVerdict(d, false);
+}
+
+function showVerdict(d, quiet) {
+  const v = $("verdict"); if (!v) return;
+  const all = d.checked > 0 && d.correct === d.checked;
+  const none = d.checked === 0;
+  const wrong = d.words.filter(w => w.status === "wrong");
+  const unk = d.words.filter(w => w.status === "unknown" || w.status === "unsupported");
+  v.className = "verdict show " + (none ? "mixed" : all ? "good" : wrong.length > 1 ? "poor" : "mixed");
+  let head;
+  if (none) head = "לא הצלחתי לשמוע מספיק כדי לשפוט — נסה שוב";
+  else if (all) head = `<b>מצוין — כל ${d.checked} המילים נכונות</b>`;
+  else head = `<b>${d.correct} מתוך ${d.checked} נכונות</b>`;
+  const lines = wrong.map(w =>
+    `<div>❌ <b>${w.word}</b> — צריך <b>${taamHe(w.expected)}</b>, נשמע כמו ${taamHe(w.heard)}</div>`)
+    .concat(unk.map(w => `<div>⚪ <b>${w.word}</b> — לא שמעתי ברור, זה לא נחשב טעות</div>`));
+  v.innerHTML = head + (lines.length ? `<div class="detail">${lines.join("")}</div>` : "");
+  if (!quiet) {
+    $("status").textContent = all ? "נשלט ✓" : none ? "לא ברור" : `${d.correct}/${d.checked}`;
+    $("hint").textContent = all && cur < flat.length - 1
+      ? "אפשר להמשיך לקטע הבא" : "אפשר להקליט שוב";
+  }
+}
+
+const HE = {};
+function taamHe(t) {
+  if (!t) return "—";
+  if (HE[t]) return HE[t];
+  const p = flat[cur]?.words.find(w => w.taam === t);
+  return p?.taam_he || t;
+}
+
+$("rec").addEventListener("click", toggle);
+$("listen").addEventListener("click", async () => {
+  const p = flat[cur];
+  const first = p.words.find(w => w.taam);
+  if (!first) return;
+  const a = $("player");
+  a.src = `/api/medoid/${first.taam}/audio`;
+  $("hint").textContent = `דוגמה מייצגת ל${first.taam_he}`;
+  a.play().catch(() => { $("hint").textContent = "אין דוגמה לטעם הזה"; });
+});
+boot();
+</script>
+</body>
+</html>
