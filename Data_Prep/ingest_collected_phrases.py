@@ -75,6 +75,23 @@ def main():
         done = set(json.loads(STATE.read_text()).get("clip_ids", []))
 
     rows = [json.loads(l) for l in LOG.read_text(encoding="utf-8").splitlines() if l.strip()]
+
+    # Only what the gatekeeper cleared. Without this, a learner who sang the
+    # WRONG ta'am contributes a row asserting that wrong sound IS the ta'am --
+    # teaching the model the very mistakes it exists to catch.
+    safe_path = PHRASES / "training_safe.json"
+    if safe_path.exists():
+        allowed = set(json.loads(safe_path.read_text())["allowed_clip_ids"])
+        blocked = [r for r in rows if r["clip_id"] not in allowed]
+        rows = [r for r in rows if r["clip_id"] in allowed]
+        if blocked:
+            print(f"gatekeeper blocked {len(blocked)} clip(s) from training "
+                  f"(Data_Prep/voice_intake.py)")
+    else:
+        print("WARNING: no training_safe.json -- run voice_intake.py --promote "
+              "first, or every recording trains regardless of whether it was "
+              "read correctly")
+
     fresh = [r for r in rows if r["clip_id"] not in done]
     print(f"{len(rows)} phrases logged, {len(fresh)} not yet ingested")
     if not fresh:
