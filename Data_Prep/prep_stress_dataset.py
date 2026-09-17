@@ -41,6 +41,7 @@ from sklearn.model_selection import train_test_split
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from stressed_syllable import stressed_syllable   # noqa: E402
+from sheva import word_label as sheva_label       # noqa: E402
 
 FEAT = PROJECT_DIR / "features_v3_word"
 OUT_ROOT = PROJECT_DIR / "prepared_data"
@@ -73,6 +74,14 @@ def label_for(task, w):
         if len(a) != 1:
             return None
         return 1 if a[0] == "\u05e2" else 0
+    if task == "sheva":
+        # None for a word with no sheva, and also for one whose shevas the
+        # rules cannot settle without morphology (after qamats) -- labelling
+        # those would train the model on a coin flip
+        lab = sheva_label(w)
+        if lab is None:
+            return None
+        return 1 if lab == "na" else 0
     return None
 
 
@@ -80,6 +89,7 @@ CLASS_NAMES = {
     "stress": ["milra", "milel"],
     "dagesh": ["no_dagesh", "dagesh"],
     "guttural": ["alef", "ayin"],
+    "sheva": ["sheva_nach", "sheva_na"],
 }
 
 N_MELS, MAX_FRAMES, PAD_DB = 128, 87, -80.0
@@ -97,7 +107,7 @@ def validate(spec):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--reader", default="BEN13R")
-    ap.add_argument("--task", choices=["stress", "dagesh", "guttural"],
+    ap.add_argument("--task", choices=["stress", "dagesh", "guttural", "sheva"],
                     default="stress",
                     help="stress: milra vs milel (station 4). "
                          "dagesh: does the word's single begadkefat letter carry "
