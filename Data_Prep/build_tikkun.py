@@ -113,42 +113,49 @@ ROLE_HE = {
 }
 
 
-def load_corpus():
-    meta = json.loads((P / "features_v3_word" / "BEN13R_meta.json")
-                      .read_text(encoding="utf-8"))
-    return meta
+BOOKS = ["Genesis", "Exodus", "Leviticus", "Numbers", "Deuteronomy"]
 
 
-def syntax_from_text(meta):
-    """Count what actually precedes and follows each ta'am, verse by verse.
+def syntax_from_text():
+    """Count frequency, position and neighbours over the pointed Torah text.
 
-    This is the grammar as the Torah uses it rather than as a chart states
-    it, so a claim like 'Darga serves Tevir' arrives with a number attached.
+    Read from the verse cache rather than from the audio corpus metadata.
+    That metadata is shuffled and carries no word index, so grouping it by
+    verse recovers the membership of each verse but NOT the order inside it
+    -- and every claim here (what precedes what, where in the verse a ta'am
+    falls) is a statement about order. Counting from the text instead makes
+    the ordering exact, and has the side benefit of covering the whole Torah
+    rather than only the part that has been recorded.
     """
-    verses = defaultdict(list)
-    for m in meta:
-        key = (m.get("book"), m.get("chapter"), m.get("verse"))
-        verses[key].append(m)
     after = defaultdict(Counter)
     before = defaultdict(Counter)
     position = defaultdict(list)
     wordlen = defaultdict(list)
     freq = Counter()
-    for key, ws in verses.items():
-        ws = sorted(ws, key=lambda m: m.get("word_index", 0))
-        n = len(ws)
-        for i, m in enumerate(ws):
-            t = m["taam"]
-            freq[t] += 1
-            if n > 1:
-                position[t].append(i / (n - 1))
-            wc = m.get("word_clean") or ""
-            wordlen[t].append(len(wc))
-            if i + 1 < n:
-                after[t][ws[i + 1]["taam"]] += 1
-            if i > 0:
-                before[t][ws[i - 1]["taam"]] += 1
-    return freq, after, before, position, wordlen
+    n_verses = 0
+    cache = P / "Data_Prep" / "sefaria_cache"
+    for book in BOOKS:
+        chap = 1
+        while (cache / f"{book}.{chap}.json").exists():
+            verses = json.loads((cache / f"{book}.{chap}.json")
+                                .read_text(encoding="utf-8"))
+            for raw in verses:
+                toks = tg.verse_tokens(raw)
+                toks = [(w, t) for w, t in toks if t]
+                n = len(toks)
+                if n < 2:
+                    continue
+                n_verses += 1
+                for i, (word, t) in enumerate(toks):
+                    freq[t] += 1
+                    position[t].append(i / (n - 1))
+                    wordlen[t].append(len(word))
+                    if i + 1 < n:
+                        after[t][toks[i + 1][1]] += 1
+                    if i > 0:
+                        before[t][toks[i - 1][1]] += 1
+            chap += 1
+    return freq, after, before, position, wordlen, n_verses
 
 
 def melody():
@@ -221,8 +228,7 @@ def accuracy_table():
 
 
 def main():
-    meta = load_corpus()
-    freq, after, before, position, wordlen = syntax_from_text(meta)
+    freq, after, before, position, wordlen, n_verses = syntax_from_text()
     mel = melody()
     acc = accuracy_table()
     audio = {}
@@ -243,8 +249,8 @@ def main():
     w("מסמך ייחוס. **כל מספר כאן נמדד** — או מהטקסט המנוקד של התורה, או "
       "מהקורפוס המוקלט. שום דבר לא הועתק מטבלה.")
     w()
-    w(f"בסיס: {total:,} מילים מוטעמות, {len([t for t in freq if freq[t]])} "
-      f"טעמים מופיעים בפועל.")
+    w(f"בסיס: **{total:,} מילים מוטעמות ב-{n_verses:,} פסוקים** — התורה "
+      f"כולה. {len([t for t in freq if freq[t]])} טעמים מופיעים בפועל.")
     w()
     w("> **הסתייגות.** המנגינות כאן הן של בעל הקריאה שהוקלט (ספרדי-ירושלמי). "
       "מסורות אחרות שרות אחרת, וגם בתוך אותה מסורת יש הבדלים בין בעלי קריאה. "
@@ -426,6 +432,9 @@ def main():
             "follows": [[k, v] for k, v in after.get(t, Counter()).most_common(4)],
             "preceded_by": [[k, v] for k, v in before.get(t, Counter()).most_common(4)],
             "curve": [round(float(x), 2) for x in m["mean"]] if m else None,
+            "curve_sd": [round(float(x), 2) for x in m["sd"]] if m else None,
+            "range_semitones": round(m["range"], 2) if m else None,
+            "peak_at": round(m["peak_at"], 3) if m else None,
             "curve_n": m["n"] if m else 0,
             "consistency": round(m["consistency"], 3) if m else None,
             "contour_he": describe_contour(m),
