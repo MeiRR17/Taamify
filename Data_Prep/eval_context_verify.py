@@ -29,6 +29,7 @@ import argparse
 import importlib.util
 import json
 import sys
+import unicodedata
 from collections import defaultdict
 from pathlib import Path
 
@@ -62,7 +63,12 @@ def verse_text(ref):
     verses = json.loads(path.read_text(encoding="utf-8"))
     if not 0 < v <= len(verses):
         return None
-    return [w for w, t in tg.verse_tokens(verses[v - 1]) if t]
+    # NFC on both sides: the cache and the corpus metadata disagree on
+    # composition order for the same pointed word, so an untouched string
+    # compare fails on words that are in fact identical. That alone dropped
+    # the reconstruction rate to well under 1% on the first run.
+    return [unicodedata.normalize("NFC", w)
+            for w, t in tg.verse_tokens(verses[v - 1]) if t]
 
 
 def build_verses(meta, classes, held, max_verses, rng):
@@ -82,7 +88,9 @@ def build_verses(meta, classes, held, max_verses, rng):
         # one corpus row per text word, matched on the pointed form
         by_word = defaultdict(list)
         for i in rows[ref]:
-            by_word[meta[i]["word_raw"]].append(i)
+            by_word[unicodedata.normalize("NFC", meta[i]["word_raw"])].append(i)
+        if len(rows[ref]) != len(words):
+            continue
         ordered = []
         for w in words:
             if not by_word.get(w):
