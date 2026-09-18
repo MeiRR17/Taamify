@@ -1091,6 +1091,25 @@ def run_channels(spec_img, pointed_word, wanted=None):
     return out
 
 
+
+def get_severity():
+    """Data_Prep/severity.py -- how serious each kind of mistake is.
+
+    Until this was wired in, every channel reported a flat right/wrong, which
+    asserts that all errors weigh the same. They do not: an error that
+    changes the meaning is corrected, one that does not draws a rebuke. On
+    2,500 held-out words only 19% of the model's ta'am errors touch a class
+    that can change meaning -- most of its weakness sits in the conjunctives,
+    where swapping one for another moves no boundary at all."""
+    if "severity" not in _state:
+        spec = importlib.util.spec_from_file_location(
+            "sev", PROJECT_DIR / "Data_Prep" / "severity.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _state["severity"] = mod
+    return _state["severity"]
+
+
 @app.post("/api/check_phrase")
 async def check_phrase(audio: UploadFile = File(...),
                        words: str = Form(...),
@@ -1177,7 +1196,25 @@ async def check_phrase(audio: UploadFile = File(...),
         correct += 1 if status == "ok" else 0
         top3, _ = classify(spec, genre=genre)
         extra = run_channels(spec, w, wanted)
+        sev = get_severity()
+        levels = []
+        if status == "wrong":
+            v = sev.verdict_for("taam", expected=expected,
+                                heard=top3[0][0] if top3 else None)
+            levels.append(v["level"])
+            taam_note = v
+        else:
+            taam_note = None
+        for name, ch in extra.items():
+            if ch["status"] == "wrong":
+                cv = sev.verdict_for(name)
+                ch["severity"] = cv["level"]
+                ch["severity_he"] = cv["level_he"]
+                ch["message"] = cv["message"]
+                levels.append(cv["level"])
         results.append({
+            "severities": levels,
+            "taam_note": taam_note,
             "word": w, "expected": expected,
             "status": status,
             "channels": extra,
@@ -1198,6 +1235,7 @@ async def check_phrase(audio: UploadFile = File(...),
             "checked": checked, "correct": correct,
             "wrong": wrong_n, "unsure": unsure_n,
             "channel_summary": ch_summary,
+            "severity": get_severity().summarise(results),
             "genre": genre,
             "saved_clip": log_phrase(raw_audio, word_list, taam_list,
                                      {"aligned": True, "align_score": score,
