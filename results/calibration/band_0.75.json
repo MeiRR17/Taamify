@@ -1,0 +1,23 @@
+{
+  "say_wrong_below": 0.3336,
+  "say_correct_above": 0.3336,
+  "contradicts_correct_rate": 0.02,
+  "confirms_real_mistake_rate": 0.095,
+  "neutral_share_correct": 0.0,
+  "neutral_share_mistakes": 0.0,
+  "head": "results/binary_verify/verify_head_hard0.75.pth",
+  "n_positives": 2500,
+  "n_negatives": 2316,
+  "held_out_parashot": [
+    "13",
+    "29",
+    "37",
+    "41",
+    "42",
+    "5",
+    "6",
+    "8"
+  ],
+  "contradict_budget": 0.02,
+  "bless_budget": 0.1
+}

@@ -1,0 +1,70 @@
+{
+ "note": "forms appearing in the Torah with BOTH final and penultimate stress, counted only where the pointing actually locates the stress",
+ "trusted_rules": [
+  "meteg_silluq",
+  "postpositive_double",
+  "prepositive_double",
+  "taam_position"
+ ],
+ "min_minority": 5,
+ "min_minority_share": 0.1,
+ "n_forms": 4,
+ "words": {
+  "הָיָה": {
+   "milra": 38,
+   "milel": 11,
+   "total": 49,
+   "minority_share": 0.224,
+   "example_milra": [
+    "הָיָ֣ה",
+    "Genesis 3:1"
+   ],
+   "example_milel": [
+    "הָ֨יָה",
+    "Genesis 13:3"
+   ]
+  },
+  "אָנֹכִי": {
+   "milra": 97,
+   "milel": 14,
+   "total": 111,
+   "minority_share": 0.126,
+   "example_milra": [
+    "אָנֹכִ֗י",
+    "Genesis 16:5"
+   ],
+   "example_milel": [
+    "אָנֹ֖כִי",
+    "Genesis 3:10"
+   ]
+  },
+  "וְעָשָׂה": {
+   "milra": 13,
+   "milel": 5,
+   "total": 18,
+   "minority_share": 0.278,
+   "example_milra": [
+    "וְעָשָׂ֕ה",
+    "Leviticus 4:2"
+   ],
+   "example_milel": [
+    "וְעָ֥שָׂה",
+    "Genesis 37:3"
+   ]
+  },
+  "יֹאכַל": {
+   "milra": 12,
+   "milel": 11,
+   "total": 23,
+   "minority_share": 0.478,
+   "example_milra": [
+    "יֹאכַ֖ל",
+    "Exodus 29:33"
+   ],
+   "example_milel": [
+    "יֹ֣אכַל",
+    "Genesis 49:27"
+   ]
+  }
+ }
+}

@@ -1,0 +1,22 @@
+{
+  "say_wrong_below": 0.3407,
+  "say_correct_above": 0.3407,
+  "single_threshold": 0.3,
+  "contradicts_correct_rate": 0.0153,
+  "lets_confusable_mistake_through": 0.1495,
+  "neutral_share_correct": 0.0,
+  "neutral_share_mistakes": 0.0,
+  "n_positives": 3000,
+  "n_negatives": 3000,
+  "held_out_parashot": [
+    "13",
+    "29",
+    "37",
+    "41",
+    "42",
+    "5",
+    "6",
+    "8"
+  ],
+  "target_false_alarm": 0.02
+}

@@ -1,0 +1,77 @@
+{
+ "Mahapakh": {
+  "say_wrong_below": 0.2995,
+  "severity": "lenient",
+  "n": 169
+ },
+ "Tevir": {
+  "say_wrong_below": 0.9968,
+  "severity": "moderate",
+  "n": 171
+ },
+ "Pashta": {
+  "say_wrong_below": 0.7203,
+  "severity": "moderate",
+  "n": 307
+ },
+ "Tipecha": {
+  "say_wrong_below": 0.5104,
+  "severity": "strict",
+  "n": 690
+ },
+ "Siluk": {
+  "say_wrong_below": 0.1481,
+  "severity": "strict",
+  "n": 338
+ },
+ "Etnachta": {
+  "say_wrong_below": 0.014,
+  "severity": "strict",
+  "n": 331
+ },
+ "Revia": {
+  "say_wrong_below": 0.998,
+  "severity": "moderate",
+  "n": 134
+ },
+ "Munach": {
+  "say_wrong_below": 0.1688,
+  "severity": "lenient",
+  "n": 547
+ },
+ "Qadma": {
+  "say_wrong_below": 0.1161,
+  "severity": "lenient",
+  "n": 83
+ },
+ "Mercha": {
+  "say_wrong_below": 0.8788,
+  "severity": "lenient",
+  "n": 540
+ },
+ "Geresh": {
+  "say_wrong_below": 0.0611,
+  "severity": "moderate",
+  "n": 56
+ },
+ "Zaqef_Qatan": {
+  "say_wrong_below": 0.3569,
+  "severity": "strict",
+  "n": 403
+ },
+ "Zaqef_Gadol": {
+  "say_wrong_below": 0.9514,
+  "severity": "strict",
+  "n": 50
+ },
+ "Darga": {
+  "say_wrong_below": 0.6303,
+  "severity": "lenient",
+  "n": 66
+ },
+ "Gershayim": {
+  "say_wrong_below": 0.3398,
+  "severity": "moderate",
+  "n": 25
+ }
+}

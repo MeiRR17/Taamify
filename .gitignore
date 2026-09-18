@@ -92,6 +92,19 @@ results/*
 !results/v3_comparison/
 results/v3_comparison/*.log
 
+# The research and reference documents are project source, not artifacts:
+# the tikkun, the halachic research, and the derived per-ta'am data are
+# deliverables that must be versioned. The generated HTML view is not --
+# it is rebuilt from the JSON by build_tikkun_page.py.
+!results/melody_research/
+results/melody_research/*
+!results/melody_research/*.md
+!results/melody_research/tikkun_data.json
+!results/melody_research/critical_stress_words.json
+!results/calibration/
+results/calibration/*
+!results/calibration/*.json
+
 # Recorded audio + metadata from /api/verify_reading's no-match/ambiguous
 # logging (webapp/server.py's log_attempt) -- local-only by design, never
 # committed: this is other people's recorded voices, not project source.

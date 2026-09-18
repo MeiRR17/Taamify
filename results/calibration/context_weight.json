@@ -1,0 +1,19 @@
+{
+  "best_weight": 0.0,
+  "catch_at_budget": 1.0,
+  "baseline_word_only": 1.0,
+  "delta_points": 0.0,
+  "contradict_budget": 0.02,
+  "n_words": 5,
+  "n_verses": 1,
+  "held_out_parashot": [
+    "13",
+    "29",
+    "37",
+    "41",
+    "42",
+    "5",
+    "6",
+    "8"
+  ]
+}
