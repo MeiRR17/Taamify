@@ -1,11 +1,11 @@
 {
-  "best_weight": 0.0,
-  "catch_at_budget": 1.0,
-  "baseline_word_only": 1.0,
-  "delta_points": 0.0,
+  "best_weight": 0.4,
+  "catch_at_budget": 0.745945945945946,
+  "baseline_word_only": 0.6535135135135135,
+  "delta_points": 9.24,
   "contradict_budget": 0.02,
-  "n_words": 5,
-  "n_verses": 1,
+  "n_words": 1850,
+  "n_verses": 204,
   "held_out_parashot": [
     "13",
     "29",

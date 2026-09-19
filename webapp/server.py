@@ -1145,7 +1145,12 @@ def context_probabilities(specs):
     return [{names[j]: float(row[j]) for j in range(len(names))} for row in probs]
 
 
-CONTEXT_WEIGHT = 0.5
+# Measured, not guessed: eval_context_verify.py sweeps this against a fixed
+# 2% contradict-a-correct-reader budget. At 0.0 (word alone) the system
+# catches 65.4% of real wrong readings; at 0.4 it catches 74.6%. Past 0.5 it
+# starts costing again -- the phrase begins to overrule audio it should be
+# listening to.
+CONTEXT_WEIGHT = 0.4
 
 
 def combine_verdict(word_prob, ctx_prob):
