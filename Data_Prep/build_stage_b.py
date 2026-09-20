@@ -115,9 +115,10 @@ def main():
     by_pair = Counter()
     for c in cases:
         spec = np.array(X[c["row"]])
-        ok, prob = srv.verify_match(spec, c["text_requires"])
-        cal = srv.get_calibration()
-        if prob < cal["say_wrong_below"]:
+        # the same decision function the endpoint runs, per-class thresholds
+        # included -- otherwise this measures a system nobody is served
+        prob, _ = srv.score_word(spec, c["text_requires"])
+        if srv.decide(prob, c["text_requires"]) == "wrong":
             caught += 1
             conf_wrong.append(prob)
             top3, _ = srv.classify(spec)
@@ -131,8 +132,8 @@ def main():
     # and the control: the SAME audio against the ta'am it really is
     ctrl_ok = 0
     for c in cases[:500]:
-        ok, prob = srv.verify_match(np.array(X[c["row"]]), c["sung"])
-        ctrl_ok += 1 if prob >= srv.get_calibration()["say_correct_above"] else 0
+        prob, _ = srv.score_word(np.array(X[c["row"]]), c["sung"])
+        ctrl_ok += 1 if srv.decide(prob, c["sung"]) == "ok" else 0
 
     L = []
     def say(s=""):

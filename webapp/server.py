@@ -999,6 +999,11 @@ CHANNELS = {
                  "classes": ["no_dagesh", "dagesh"], "he": "דגש קל"},
     "guttural": {"dir": "results/guttural8_p_PROD",
                  "classes": ["alef", "ayin"], "he": "ע׳ / א׳"},
+    # Median of three seeds (0.9616 / 0.9592 / 0.9601 balanced) -- the spread
+    # is 0.24 points, far inside the 1.17-point seed noise, so picking the
+    # highest would be cherry-picking. Shuffled-label control: 0.493.
+    "sheva":    {"dir": "results/sheva8_p_PROD",
+                 "classes": ["sheva_nach", "sheva_na"], "he": "שווא נע/נח"},
 }
 BEGADKEFAT = set("בגדכפת")
 DAGESH_MARK = "\u05bc"
@@ -1064,6 +1069,19 @@ def expected_channel_label(name, pointed_word):
         if len(a) != 1:
             return None
         return "ayin" if a[0] == "\u05e2" else "alef"
+    if name == "sheva":
+        # sheva.py returns None wherever the pointing alone cannot settle it
+        # -- after a qamats, which needs morphology. Those words are skipped,
+        # never guessed: a confident wrong verdict is worse than silence.
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "shv", PROJECT_DIR / "Data_Prep" / "sheva.py")
+            shv = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(shv)
+            lab = shv.word_label(pointed_word)
+        except Exception:
+            return None
+        return {"na": "sheva_na", "nach": "sheva_nach"}.get(lab)
     return None
 
 
@@ -1168,6 +1186,56 @@ def combine_verdict(word_prob, ctx_prob):
     return float(w * c)
 
 
+
+@lru_cache(maxsize=1)
+def get_per_class_thresholds():
+    """Per-ta'am say-wrong thresholds, calibrated against per-ta'am severity.
+
+    One global threshold forces the same caution everywhere, but the ta'amim
+    are not equally confusable and an error does not cost the same on each.
+    Etnachta is almost never mistaken and changes the meaning of the verse, so
+    it is worth being strict there; Mercha and Munach are separated mostly by
+    position rather than by sound, so a confident verdict on one of them
+    contradicts readers who were right.
+
+    Falls back to the global threshold for any class not calibrated.
+    """
+    path = PROJECT_DIR / "results" / "calibration" / "per_class.json"
+    if not path.exists():
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            return {k: v["say_wrong_below"] for k, v in json.load(f).items()}
+    except Exception:
+        return {}
+
+
+def decide(conf, expected=None):
+    """The verdict, in one place.
+
+    Everything that reports a number about this product -- the live endpoint,
+    the calibration script, the Stage B evaluation -- has to run this same
+    function, or the thresholds get derived against one score and applied to
+    another. That has already happened once: the band was calibrated on the
+    isolated-word score while the endpoint served the context-blended one.
+    """
+    cal = get_calibration()
+    lo = get_per_class_thresholds().get(expected, cal["say_wrong_below"])
+    hi = max(cal["say_correct_above"], lo)
+    if conf >= hi:
+        return "ok"
+    if conf < lo:
+        return "wrong"
+    return "unsure"
+
+
+def score_word(spec, expected, ctx_prob=None):
+    """The confidence the product acts on: the isolated word, blended with
+    what the phrase implies when a phrase is available."""
+    _, raw = verify_match(spec, expected)
+    return combine_verdict(raw, ctx_prob), raw
+
+
 @app.post("/api/check_phrase")
 async def check_phrase(audio: UploadFile = File(...),
                        words: str = Form(...),
@@ -1249,22 +1317,15 @@ async def check_phrase(audio: UploadFile = File(...),
             results.append({"word": w, "expected": expected, "status": "unsupported",
                             "message": "הטעם הזה עדיין לא נתמך"})
             continue
-        ok, raw_conf = verify_match(spec, expected)
         ctx_p = None
         if ctx is not None and i in spec_index:
             ctx_p = ctx[spec_index[i]].get(expected)
-        conf = combine_verdict(raw_conf, ctx_p)
-        cal = get_calibration()
+        conf, raw_conf = score_word(spec, expected, ctx_p)
         # Three states, not two. Between the thresholds the model has no real
         # opinion, and the honest answer is a neutral mark rather than a
         # verdict -- contradicting a learner who read correctly is the one
         # mistake this product cannot afford to make often.
-        if conf >= cal["say_correct_above"]:
-            status = "ok"
-        elif conf < cal["say_wrong_below"]:
-            status = "wrong"
-        else:
-            status = "unsure"
+        status = decide(conf, expected)
         checked += 1
         correct += 1 if status == "ok" else 0
         top3, _ = classify(spec, genre=genre)
