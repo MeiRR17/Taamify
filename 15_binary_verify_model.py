@@ -143,6 +143,14 @@ def main():
     ap.add_argument('--epochs', type=int, default=30)
     ap.add_argument('--batch-size', type=int, default=256)
     ap.add_argument('--seed', type=int, default=0)
+    ap.add_argument('--exclude-held-out', action='store_true',
+                    help="drop the canonical held-out parashot "
+                         "(Data_Prep/holdout.py) from training. Needed "
+                         "whenever the resulting head will be CALIBRATED on "
+                         "those parashot: a head that trained on them makes "
+                         "the thresholds look better than they are. Omit for "
+                         "the shipped head, which should see all the data and "
+                         "then use the thresholds this run produced.")
     ap.add_argument('--hard-negatives', type=float, default=0.0,
                     help="share of negative pairs drawn from the class the CNN "
                          "most confuses the true one with, instead of a uniform "
