@@ -66,8 +66,9 @@ def main():
     X = np.load(FEAT / "BEN13R_X.npy", mmap_mode="r")
     meta = json.loads((FEAT / "BEN13R_meta.json").read_text(encoding="utf-8"))
     rng = np.random.default_rng(42)
-    par = np.array([str(m.get("parasha", "?")) for m in meta])
-    held = set(rng.choice(np.unique(par), size=8, replace=False).tolist())
+    sys.path.insert(0, str(P / "Data_Prep"))
+    from holdout import HELD_OUT
+    held = set(HELD_OUT)
     idx = [i for i, m in enumerate(meta)
            if str(m.get("parasha")) in held and m["taam"] in classes]
     rng.shuffle(idx)

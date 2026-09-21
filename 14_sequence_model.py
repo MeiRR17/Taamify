@@ -343,9 +343,14 @@ def main():
         # applies to the per-word model, applied here to the sequence model,
         # whose headline number had only ever been measured the leaky way.
         parasha_of = {v: v.split("|")[1] for v in set(verses)}
-        all_par = np.array(sorted(set(parasha_of.values())))
-        rng.shuffle(all_par)
-        held_par = set(all_par[:args.holdout_parashot].tolist())
+        # The canonical list, not a fresh draw: a seeded draw is reproducible
+        # only until someone changes the draw, and shuffle() here disagreed
+        # with choice() in the evaluation scripts, so each stage was honest
+        # about a different holdout. See Data_Prep/holdout.py.
+        import sys as _sys
+        _sys.path.insert(0, str(PROJECT_DIR / "Data_Prep"))
+        from holdout import HELD_OUT
+        held_par = set(HELD_OUT)
         rest = np.array(sorted(v for v, p in parasha_of.items() if p not in held_par))
         rng.shuffle(rest)
         v_test = {v for v, p in parasha_of.items() if p in held_par}

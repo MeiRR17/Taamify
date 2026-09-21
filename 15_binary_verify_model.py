@@ -175,6 +175,19 @@ def main():
             args.checkpoint, [args.holdout], device, train_mod)
         baseline_top1 = accuracy_score(y_te, cnn_preds_te)
 
+    if args.exclude_held_out:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).resolve().parent / "Data_Prep"))
+        from holdout import HELD_OUT
+        keep = np.array([v.split("|")[1] not in set(HELD_OUT)
+                         for v in verses_tr])
+        dropped = int((~keep).sum())
+        emb_tr, cnn_pred_tr = emb_tr[keep], cnn_pred_tr[keep]
+        y_tr = y_tr[keep]
+        verses_tr = np.asarray(verses_tr)[keep]
+        print(f"excluded {dropped:,} words in the held-out parashot "
+              f"{sorted(HELD_OUT)} -- this head can be calibrated on them")
+
     # verse-level train/val split, same discipline as 14_sequence_model.py:
     # no verse straddles the split
     uniq_verses = np.array(sorted(set(verses_tr)))

@@ -48,6 +48,7 @@ Usage:
 import argparse
 import importlib.util
 import json
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -77,8 +78,9 @@ def main():
     # hold out the same parashot the honest split holds out, so nothing here
     # was seen in training
     rng = np.random.default_rng(42)
-    par = np.array([str(m.get("parasha", "?")) for m in meta])
-    held = set(rng.choice(np.unique(par), size=8, replace=False).tolist())
+    sys.path.insert(0, str(P / "Data_Prep"))
+    from holdout import HELD_OUT
+    held = set(HELD_OUT)
 
     by_word = defaultdict(lambda: defaultdict(list))
     for i, m in enumerate(meta):

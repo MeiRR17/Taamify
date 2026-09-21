@@ -38,6 +38,7 @@ import numpy as np
 P = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(P / "Data_Prep"))
 import taam_grammar as tg          # noqa: E402
+from holdout import HELD_OUT       # noqa: E402
 
 BOOKS = {1: "Genesis", 2: "Exodus", 3: "Leviticus",
          4: "Numbers", 5: "Deuteronomy"}
@@ -116,8 +117,7 @@ def main():
     classes = set(srv.get_model()["class_names"])
 
     rng = np.random.default_rng(42)
-    par = np.unique([str(m.get("parasha", "?")) for m in meta])
-    held = set(rng.choice(par, size=8, replace=False).tolist())
+    held = set(HELD_OUT)
 
     verses = build_verses(meta, classes, held, args.verses, rng)
     print(f"  {len(verses)} פסוקים שלמים שוחזרו מ-{len(held)} פרשות מוחזקות\n")
