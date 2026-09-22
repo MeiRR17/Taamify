@@ -56,13 +56,13 @@ TEACHER_JSON = PROJECT_DIR / "app_assets" / "teacher_contours.json"
 # this one lets 9.9% through. A learner's error is never a random ta'am.
 # NOTE: sweep jobs must COPY this file, never mv it -- a `mv` in a queued job
 # once deleted the head out from under the running server.
-VERIFY_HEAD_PATH = PROJECT_DIR / "results" / "verify_head_cal.pth"
+VERIFY_HEAD_PATH = PROJECT_DIR / "results" / "verify_head_cal.pth"   # see note below
 # Derived by Data_Prep/derive_neutral_band.py, which sets TWO thresholds
 # against two different error budgets. The earlier file collapsed them to one
 # number, which silently removed the neutral state the product depends on:
 # every word was forced into "correct" or "wrong", including the ones the
 # model had no real opinion about.
-CALIBRATION_PATH = PROJECT_DIR / "results" / "calibration" / "calibration.json"
+CALIBRATION_PATH = PROJECT_DIR / "results" / "calibration" / "calibration_served.json"
 ATTEMPTS_DIR = PROJECT_DIR / "app_assets" / "collected_attempts"
 ATTEMPTS_LOG = ATTEMPTS_DIR / "attempts_log.jsonl"
 BEN13_SEGMENTS_DIR = PROJECT_DIR / "data" / "ben13_segments"
@@ -747,14 +747,29 @@ def get_calibration():
     about a real mistake costs one uncorrected error in a practice session.
     So the threshold is chosen to hold contradictions under 2% and accept
     the misses that follow -- not to maximise accuracy.
-    See Data_Prep/calibrate_verify_head.py.
+    See Data_Prep/calibrate_served_path.py.
+
+    A threshold only means anything against the score it was derived from, so
+    the calibration file records the CONTEXT_WEIGHT in force when it was
+    derived and this refuses to use it at a different weight. That pairing has
+    already been broken twice -- once by deriving on the isolated-word score
+    while serving the blended one, and once by retuning the weight after
+    calibrating. Neither failed loudly; both just moved the operating point.
     """
     if "calibration" not in _state:
         default = {"say_wrong_below": 0.30, "say_correct_above": 0.30}
         try:
-            default.update(json.loads(CALIBRATION_PATH.read_text(encoding="utf-8")))
+            loaded = json.loads(CALIBRATION_PATH.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            pass
+            loaded = {}
+        w = loaded.get("context_weight")
+        if w is not None and abs(w - CONTEXT_WEIGHT) > 1e-9:
+            raise RuntimeError(
+                f"{CALIBRATION_PATH.name} was derived at context_weight={w} "
+                f"but the server runs CONTEXT_WEIGHT={CONTEXT_WEIGHT}. The "
+                f"thresholds do not apply to this score -- re-run "
+                f"Data_Prep/calibrate_served_path.py.")
+        default.update(loaded)
         _state["calibration"] = default
     return _state["calibration"]
 
@@ -1172,11 +1187,16 @@ def context_probabilities(specs):
 
 
 # Measured, not guessed: eval_context_verify.py sweeps this against a fixed
-# 2% contradict-a-correct-reader budget. At 0.0 (word alone) the system
-# catches 65.4% of real wrong readings; at 0.4 it catches 74.6%. Past 0.5 it
-# starts costing again -- the phrase begins to overrule audio it should be
-# listening to.
-CONTEXT_WEIGHT = 0.4
+# 2% contradict-a-correct-reader budget. On the honest chain (parasha-split
+# CNN, held-out parashot) the word alone catches 55.6% of real wrong
+# readings and 0.7 catches 74.5% -- +18.9 points.
+#
+# The first sweep, against the leaky random-split CNN, said 0.4 and +9.2. It
+# understated the gain because the per-word score was itself inflated: the
+# CNN had seen neighbouring words of the very verses being scored, so there
+# was less for context to add. Re-measuring on the honest chain moved both
+# the optimum and its size.
+CONTEXT_WEIGHT = 0.7
 
 
 def combine_verdict(word_prob, ctx_prob):

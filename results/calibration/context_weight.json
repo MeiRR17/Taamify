@@ -1,8 +1,8 @@
 {
-  "best_weight": 0.4,
-  "catch_at_budget": 0.745945945945946,
-  "baseline_word_only": 0.6535135135135135,
-  "delta_points": 9.24,
+  "best_weight": 0.7,
+  "catch_at_budget": 0.7454054054054055,
+  "baseline_word_only": 0.5562162162162162,
+  "delta_points": 18.92,
   "contradict_budget": 0.02,
   "n_words": 1850,
   "n_verses": 204,

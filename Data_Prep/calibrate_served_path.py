@@ -58,14 +58,21 @@ def main():
     args = ap.parse_args()
 
     srv = ev.load_server()
+    # This script DERIVES the thresholds, so it must not depend on them --
+    # and get_calibration() refuses to serve a file derived at a different
+    # context weight, which would otherwise make recalibration impossible
+    # exactly when the weight has changed. Seed a neutral one; only the raw
+    # scores are used below.
+    srv._state["calibration"] = {"say_wrong_below": 0.0,
+                                 "say_correct_above": 1.0,
+                                 "context_weight": srv.CONTEXT_WEIGHT}
     X = np.load(P / "features_v3_word" / "BEN13R_X.npy", mmap_mode="r")
     meta = json.loads((P / "features_v3_word" / "BEN13R_meta.json")
                       .read_text(encoding="utf-8"))
     classes = set(srv.get_model()["class_names"])
 
     rng = np.random.default_rng(42)
-    par = np.unique([str(m.get("parasha", "?")) for m in meta])
-    held = set(rng.choice(par, size=8, replace=False).tolist())
+    held = set(ev.HELD_OUT)
     verses = ev.build_verses(meta, classes, held, args.verses, rng)
     print(f"  {len(verses)} פסוקים מ-{len(held)} פרשות מוחזקות")
     if not verses:

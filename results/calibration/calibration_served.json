@@ -1,0 +1,25 @@
+{
+  "say_wrong_below": 0.0253,
+  "say_correct_above": 0.1107,
+  "has_neutral_band": true,
+  "contradict_rate": 0.02,
+  "bless_rate": 0.1,
+  "catch_rate": 0.8254,
+  "contradict_budget": 0.02,
+  "bless_budget": 0.1,
+  "context_weight": 0.7,
+  "n_positive": 1850,
+  "n_negative": 1850,
+  "n_verses": 204,
+  "held_out_parashot": [
+    "13",
+    "29",
+    "37",
+    "41",
+    "42",
+    "5",
+    "6",
+    "8"
+  ],
+  "derived_on": "the context-blended score the server serves, not the isolated-word score"
+}
