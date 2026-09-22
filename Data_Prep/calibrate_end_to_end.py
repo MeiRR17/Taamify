@@ -81,11 +81,72 @@ def held_out_clips(limit):
         for w in words:
             toks = tg.verse_tokens(w)
             taamim.append(toks[0][1] if toks else None)
-        if not all(taamim):
+        if not all(taamim) or len(words) < 2:
+            # A one-word "phrase" is the degenerate case, not the product's
+            # case: the sequence tagger has no neighbours to reason over, so
+            # at CONTEXT_WEIGHT 0.7 the blend is dominated by a context term
+            # computed from nothing. A first run filled its whole quota with
+            # these and concluded the system could not separate correct from
+            # wrong at all -- an artefact of the input, not a property of the
+            # model. The learner always submits several words.
             continue
         out.append((str(P / path), words, taamim))
     out.sort(key=lambda t: -len(t[1]))
+    if len(out) < limit:
+        out += splice_phrases(man, held, limit - len(out))
     return out[:limit]
+
+
+def splice_phrases(man, held, want, per_phrase=5):
+    """Join consecutive single-word recordings of one verse into a phrase.
+
+    Ben13's corpus is recorded one word per file, so there is almost no
+    multi-word audio in it -- but a learner submits a whole phrase, and the
+    aligner's behaviour over several words is exactly what needs calibrating.
+    Concatenating consecutive words of the same verse, in order, from the
+    same reader and the same session is the closest available stand-in.
+
+    It is a stand-in and not the real thing: the joins have no breath and no
+    co-articulation across the boundary, so alignment here is if anything
+    easier than on a real learner's phrase. Thresholds derived from it are
+    therefore optimistic on alignment and honest on the cut geometry, which
+    is the part that was wrong.
+    """
+    import shutil
+    import subprocess as sp
+    tmp = P / "results" / "calibration" / "spliced"
+    tmp.mkdir(parents=True, exist_ok=True)
+    by_verse = defaultdict(list)
+    for e in man:
+        m = re.search(r"/yerushalmi/(\d+)-", e["local_path"])
+        if m and int(m.group(1)) in held and (P / e["local_path"]).exists():
+            by_verse[(e["book"], e["perek"], e["pasuk"])].append(e)
+    out = []
+    for key, rows in by_verse.items():
+        rows = sorted(rows, key=lambda e: int(e["id"]))
+        for a in range(0, len(rows) - per_phrase + 1, per_phrase):
+            chunk = rows[a:a + per_phrase]
+            words = [e["text"] for e in chunk]
+            taamim = []
+            for w in words:
+                toks = tg.verse_tokens(w)
+                taamim.append(toks[0][1] if toks else None)
+            if not all(taamim):
+                continue
+            name = tmp / f"{key[0]}_{key[1]}_{key[2]}_{a}.wav"
+            if not name.exists():
+                lst = tmp / "list.txt"
+                lst.write_text("".join(
+                    f"file '{(P / e['local_path']).resolve()}'\n" for e in chunk))
+                r = sp.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                            "-i", str(lst), "-ar", "16000", "-ac", "1",
+                            str(name)], capture_output=True)
+                if r.returncode != 0 or not name.exists():
+                    continue
+            out.append((str(name), words, taamim))
+            if len(out) >= want:
+                return out
+    return out
 
 
 def post(path, words, taamim):
@@ -124,8 +185,9 @@ def main():
             total_words += 1
             pos.append(w["confidence"])
             # what the model most nearly heard instead -- the realistic error
-            alt = next((t for t, _ in (w.get("top3") or [])
-                        if t != w.get("expected")), None)
+            alt = w.get("heard")
+            if alt == w.get("expected"):
+                alt = None
             heard.append(alt)
         # resubmit the same audio against those near-miss ta'amim
         if any(heard) and len(heard) == len(taamim):

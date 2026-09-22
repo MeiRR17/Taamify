@@ -470,7 +470,11 @@ def main():
         out_dir = OUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    split_desc = (f"LORO holdout={args.holdout}" if args.holdout
+    # the report said "random" even for a parasha holdout, which is the one
+    # label a reader of this file most needs to be true
+    split_desc = (f"parasha holdout ({args.holdout_parashot} whole parashot)"
+                  if args.holdout_parashot
+                  else f"LORO holdout={args.holdout}" if args.holdout
                   else "random 70/15/15 by verse")
     seq_label = "CNN + verse BiLSTM" + (" + CRF" if args.crf else "") + \
         (" (grammar prior)" if args.grammar_prior else "")
