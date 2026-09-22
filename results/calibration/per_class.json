@@ -1,56 +1,56 @@
 {
  "Munach": {
-  "say_wrong_below": 0.0869,
+  "say_wrong_below": 0.0462,
   "severity": "lenient",
   "n": 214
  },
  "Zaqef_Qatan": {
-  "say_wrong_below": 0.0133,
+  "say_wrong_below": 0.003,
   "severity": "strict",
   "n": 168
  },
  "Mercha": {
-  "say_wrong_below": 0.7044,
+  "say_wrong_below": 0.5444,
   "severity": "lenient",
   "n": 294
  },
  "Tipecha": {
-  "say_wrong_below": 0.0272,
+  "say_wrong_below": 0.002,
   "severity": "strict",
   "n": 383
  },
  "Siluk": {
-  "say_wrong_below": 0.0034,
+  "say_wrong_below": 0.0011,
   "severity": "strict",
   "n": 204
  },
  "Pashta": {
-  "say_wrong_below": 0.0149,
+  "say_wrong_below": 0.0012,
   "severity": "moderate",
   "n": 102
  },
  "Darga": {
-  "say_wrong_below": 0.0325,
+  "say_wrong_below": 0.0178,
   "severity": "lenient",
   "n": 37
  },
  "Tevir": {
-  "say_wrong_below": 0.9973,
+  "say_wrong_below": 0.9955,
   "severity": "moderate",
   "n": 74
  },
  "Etnachta": {
-  "say_wrong_below": 0.0001,
+  "say_wrong_below": 0.0,
   "severity": "strict",
   "n": 181
  },
  "Revia": {
-  "say_wrong_below": 0.9962,
+  "say_wrong_below": 0.9947,
   "severity": "moderate",
   "n": 39
  },
  "Mahapakh": {
-  "say_wrong_below": 0.1327,
+  "say_wrong_below": 0.0725,
   "severity": "lenient",
   "n": 65
  }

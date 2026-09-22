@@ -36,7 +36,7 @@ import librosa
 import numpy as np
 import torch
 import torch.nn as nn
-from fastapi import Body, FastAPI, File, Form, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -1286,8 +1286,21 @@ async def check_phrase(audio: UploadFile = File(...),
     error this product can make.
     """
     wanted = [c.strip() for c in channels.split(",") if c.strip() in CHANNELS] or None
-    word_list = [w for w in json.loads(words) if w.strip()]
-    taam_list = json.loads(taamim)
+    # words/taamim arrive as JSON arrays. Malformed input is the caller's
+    # mistake and belongs in a 400 with a usable message, not a 500 -- the
+    # app has to be able to tell "you sent the wrong shape" apart from "the
+    # model broke".
+    try:
+        parsed_words = json.loads(words)
+        parsed_taamim = json.loads(taamim)
+        if not isinstance(parsed_words, list) or not isinstance(parsed_taamim, list):
+            raise ValueError("expected JSON arrays")
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"words and taamim must be JSON arrays of strings ({exc})")
+    word_list = [w for w in parsed_words if w.strip()]
+    taam_list = parsed_taamim
     if len(word_list) != len(taam_list):
         return {"error": "words and taamim must be the same length"}
 
