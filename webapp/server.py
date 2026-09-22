@@ -56,7 +56,7 @@ TEACHER_JSON = PROJECT_DIR / "app_assets" / "teacher_contours.json"
 # this one lets 9.9% through. A learner's error is never a random ta'am.
 # NOTE: sweep jobs must COPY this file, never mv it -- a `mv` in a queued job
 # once deleted the head out from under the running server.
-VERIFY_HEAD_PATH = PROJECT_DIR / "results" / "binary_verify" / "production_verify_head_hard.pth"
+VERIFY_HEAD_PATH = PROJECT_DIR / "results" / "verify_head_cal.pth"
 # Derived by Data_Prep/derive_neutral_band.py, which sets TWO thresholds
 # against two different error budgets. The earlier file collapsed them to one
 # number, which silently removed the neutral state the product depends on:
@@ -154,7 +154,7 @@ def get_model():
         # 87.9% on a random split, 86.9% with eight whole parashot held out
         # (the honest number for a single-voice corpus), and the verify head
         # trained on THIS checkpoint's embedding space scores 97.5%.
-        ckpt_path = PROJECT_DIR / "results/random_top21_torahship_FINAL/deep_cnn/deep_cnn_best.pth"
+        ckpt_path = PROJECT_DIR / "results/parasha8_top21_torahhonest_FINALrecipe/deep_cnn/deep_cnn_best.pth"
         ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
         model = tp.MODEL_REGISTRY[ckpt["architecture"]](
             num_classes=len(ckpt["class_names"]))
@@ -191,7 +191,14 @@ def get_verify_head():
         # random_top21_torahship -- no error, no 500, just quietly wrong
         # scores. The checkpoint path is what actually pins the pairing.
         trained_against = ckpt.get("cnn_checkpoint")
-        if trained_against and Path(trained_against).resolve() != Path(st["ckpt_path"]).resolve():
+        # Resolve relative paths against the project, never the working
+        # directory: the checkpoint stores "results/..." and a caller running
+        # from Data_Prep/ resolved that to Data_Prep/results/..., firing this
+        # guard on two names for the same file.
+        def _abs(q):
+            q = Path(q)
+            return (q if q.is_absolute() else PROJECT_DIR / q).resolve()
+        if trained_against and _abs(trained_against) != _abs(st["ckpt_path"]):
             raise RuntimeError(
                 f"verify head was trained against {trained_against}, but the "
                 f"server is serving {st['ckpt_path']} -- retrain the head "
@@ -631,7 +638,7 @@ def word_spectrogram(y, start, end):
 
 
 
-SEQUENCE_TAGGER_PATH = (PROJECT_DIR / "results" / "sequence_model" / "FINAL_crf"
+SEQUENCE_TAGGER_PATH = (PROJECT_DIR / "results" / "sequence_model" / "calhonest_crf"
                         / "verse_tagger.pth")
 
 
