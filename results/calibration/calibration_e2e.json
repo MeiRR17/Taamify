@@ -1,14 +1,14 @@
 {
   "say_wrong_below": 0.0,
-  "say_correct_above": 0.998,
+  "say_correct_above": 0.965,
   "has_neutral_band": true,
   "contradict_rate": 0.0,
-  "bless_rate": 0.1301,
+  "bless_rate": 0.1012,
   "catch_rate": 0.0,
   "contradict_budget": 0.02,
   "bless_budget": 0.1,
   "n_positive": 909,
-  "n_negative": 899,
+  "n_negative": 909,
   "n_clips": 201,
   "held_out_parashot": [
     "13",

@@ -50,6 +50,18 @@ sys.path.insert(0, str(P / "Data_Prep"))
 import taam_grammar as tg          # noqa: E402
 from holdout import HELD_OUT       # noqa: E402
 
+# Which ta'am each one is actually mistaken for, measured over the corpus.
+# Loaded once; falls back to a neighbour of the same class when absent.
+def _load_confusion():
+    f = P / "results" / "calibration" / "confusion_partner.json"
+    if f.exists():
+        try:
+            return json.loads(f.read_text(encoding="utf-8"))
+        except ValueError:
+            pass
+    return {}
+
+
 CONTRADICT_BUDGET = 0.02
 BLESS_BUDGET = 0.10
 URL = "http://127.0.0.1:8000/api/check_phrase"
@@ -168,6 +180,11 @@ def main():
     ap.add_argument("--out", default="calibration_e2e.json")
     args = ap.parse_args()
 
+    global CONFUSION
+    CONFUSION = _load_confusion()
+    if not CONFUSION:
+        print("  אין טבלת בלבול — הרץ תחילה את build_confusion_partner")
+        return
     clips = held_out_clips(args.clips)
     print(f"  {len(clips)} מקטעים מפרשות מוחזקות "
           f"(חציון {int(np.median([len(c[1]) for c in clips]))} מילים)\n")
@@ -184,11 +201,14 @@ def main():
                 continue
             total_words += 1
             pos.append(w["confidence"])
-            # what the model most nearly heard instead -- the realistic error
-            alt = w.get("heard")
-            if alt == w.get("expected"):
-                alt = None
-            heard.append(alt)
+            # The negative must NOT be the model's own prediction for this
+            # clip. Using `heard` made the negatives the one answer the model
+            # was most confident about, so every "wrong" submission scored
+            # near 1.0 and the catch rate read 0% -- a property of the test,
+            # not of the system. The realistic learner error is the ta'am
+            # this one is confused with IN GENERAL, taken from the corpus
+            # confusion matrix and independent of this recording.
+            heard.append(CONFUSION.get(w.get("expected")))
         # resubmit the same audio against those near-miss ta'amim
         if any(heard) and len(heard) == len(taamim):
             wrong = [h or t for h, t in zip(heard, taamim)]
