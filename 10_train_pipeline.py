@@ -179,10 +179,26 @@ def time_stretch_augment(x, max_ratio=float(os.environ.get('TAAMIFY_TSTRETCH', '
     duration from the input entirely -- this keeps duration but decorrelates
     it from the label.
     """
+    # TAAMIFY_TSQUEEZE turns this from a mild jitter into the thing the
+    # product actually needs. Ben13's corpus is a TEACHING corpus: one word
+    # per file, chanted deliberately over a 4.2s median. A child reading
+    # continuously produces words in 0.4-0.6s -- roughly 8x faster. Measured
+    # on held-out words, the model scores 94.4% at the corpus's own tempo,
+    # 26.4% at 2x, and 0.0% at 4x. It has never heard a ta'am at reading
+    # tempo, and no window geometry recovers that.
+    #
+    # Set to the strongest compression to train for (e.g. 8 for 8x). The
+    # ratio is then drawn log-uniformly over [1/squeeze, 1], so every tempo
+    # between reading speed and the corpus's own is seen about equally often
+    # -- a linear draw would spend almost all its samples near the slow end.
+    squeeze = float(os.environ.get('TAAMIFY_TSQUEEZE', '0'))
     B, C, H, W = x.shape
     y = torch.empty_like(x)
     for i in range(B):
-        r = 1.0 + np.random.uniform(-max_ratio, max_ratio)
+        if squeeze > 1.0:
+            r = float(np.exp(np.random.uniform(np.log(1.0 / squeeze), 0.0)))
+        else:
+            r = 1.0 + np.random.uniform(-max_ratio, max_ratio)
         new_w = max(4, min(W, int(round(W * r))))
         stretched = torch.nn.functional.interpolate(
             x[i:i + 1], size=(H, new_w), mode="bilinear", align_corners=False)
