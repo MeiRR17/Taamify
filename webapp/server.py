@@ -1290,6 +1290,25 @@ CORPUS_LEAD_IN_S = 0.40
 # another. Measured: 57.5% -> 62.9%, and zeros 27.0% -> 17.9%.
 TTA_OFFSETS = (-0.25, -0.125, 0.0, 0.125, 0.25)
 
+# Which time offset to cut the whole phrase at, chosen by the sequence model.
+#
+# The aligner is right about most words and badly wrong about a minority, and
+# that minority costs 16.5 points: same audio, same model, corpus boundaries
+# 66.8% against the aligner's 50.3%. Trying several offsets and keeping the
+# one the per-word classifier is most confident about recovers only 3 of the
+# 21 points an oracle can reach -- confidence is a poor judge of its own cuts
+# (median 0.993 when right, 0.840 when wrong).
+#
+# The sequence model is a much better judge, because a bad cut breaks the
+# grammar of the whole phrase rather than just lowering one word's score:
+# base 46.0%, sequence-selected 53.7%, oracle 54.4%. It captures nearly all
+# of what is available.
+#
+# One offset for the whole phrase, not per word -- a reader has one delay,
+# and per-word choice would let the grammar be satisfied by cutting each word
+# wherever suits it.
+SHIFT_CANDIDATES = (-0.3, -0.15, 0.0, 0.15, 0.3)
+
 
 def partition_spans(spans, duration):
     """Turn the aligner's tight word extents into a partition of the audio.
@@ -1313,6 +1332,40 @@ def partition_spans(spans, duration):
         lo = max(0.0, a - CORPUS_LEAD_IN_S)
         out[k] = (lo, min(duration, lo + CORPUS_WINDOW_S))
     return out
+
+
+def best_shift(y, spans, duration):
+    """Slide the whole phrase's cut points and keep what the grammar likes.
+
+    Returns spans unchanged when the sequence tagger is unavailable, so the
+    verdict degrades to the aligner's own cut rather than failing.
+    """
+    sq = get_sequence_tagger()
+    if sq is None or len(spans) < 2:
+        return spans
+    ks = sorted(spans)
+    best, best_score = spans, None
+    for off in SHIFT_CANDIDATES:
+        specs, ok = [], True
+        for k in ks:
+            lo = max(0.0, spans[k][0] + off)
+            sp = word_spectrogram(y, lo, min(duration, lo + CORPUS_WINDOW_S))
+            if sp is None:
+                ok = False
+                break
+            specs.append(sp)
+        if not ok:
+            continue
+        ctx = context_probabilities(specs)
+        if ctx is None:
+            continue
+        # how sure the grammar is about the phrase it just read
+        score = float(np.mean([max(d.values()) for d in ctx]))
+        if best_score is None or score > best_score:
+            best_score = score
+            best = {k: (max(0.0, spans[k][0] + off),
+                        min(duration, spans[k][1] + off)) for k in ks}
+    return best
 
 
 def tta_spectrograms(y, lo, duration):
@@ -1396,6 +1449,7 @@ async def check_phrase(audio: UploadFile = File(...),
                 "words": []}
 
     spans = partition_spans(spans, len(y16) / 16000)
+    spans = best_shift(y, spans, len(y16) / 16000)
 
     # first pass: cut every word, so the phrase can be judged as a sequence
     specs_in_order, spec_index = [], {}
