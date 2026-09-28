@@ -67,6 +67,59 @@ BLESS_BUDGET = 0.10
 URL = "http://127.0.0.1:8000/api/check_phrase"
 
 
+def real_block_clips(limit):
+    """Blocks the reader actually read in sequence, from the held-out parashot.
+
+    The earlier fixture spliced single-word recordings together, and it was
+    doubly wrong: the manifest it drew from is a partial download -- 5.5 words
+    per verse against the text's 11.7, with Siluk appearing 14 times across
+    1,814 verses instead of once each -- and the joins were seams rather than
+    transitions. Every serving-path number measured on it described a corpus
+    that does not exist.
+
+    The corpus already contains what was needed: grouping BEN13R by
+    (verse_ref, segment_block) gives 21,587 blocks of 2-8 words, real
+    continuous audio with real per-word boundaries. Those are used here.
+    """
+    import librosa
+    meta = json.loads((P / "features_v3_word" / "BEN13R_meta.json")
+                      .read_text(encoding="utf-8"))
+    man = json.loads((P / "data" / "ben13_reading" /
+                      "manifest_yerushalmi.json").read_text(encoding="utf-8"))
+    audio = defaultdict(set)
+    for e in man:
+        audio[(e["book"], e["perek"], e["pasuk"])].add(e["local_path"])
+    blocks = defaultdict(list)
+    for i, m in enumerate(meta):
+        blocks[(m["verse_ref"], m["segment_block"])].append(i)
+    held = set(HELD_OUT)
+    out = []
+    for (ref, _blk), idxs in blocks.items():
+        if len(idxs) < 3 or str(meta[idxs[0]].get("parasha")) not in held:
+            continue
+        idxs = sorted(idxs, key=lambda i: meta[i]["start"])
+        b, c, v = ref.split(".")
+        chosen = None
+        for pth in audio.get((b, c, v), ()):
+            if not (P / pth).exists():
+                continue
+            try:
+                d = librosa.get_duration(path=str(P / pth))
+            except Exception:
+                continue
+            # the file that actually holds this block: its length matches
+            if abs(d - meta[idxs[-1]]["end"]) < 0.4:
+                chosen = str(P / pth)
+                break
+        if not chosen:
+            continue
+        out.append((chosen, [meta[i]["word_raw"] for i in idxs],
+                    [meta[i]["taam"] for i in idxs]))
+        if len(out) >= limit:
+            break
+    return out
+
+
 def held_out_clips(limit):
     """Ben13's own recordings from the held-out parashot, longest first.
 
@@ -185,7 +238,7 @@ def main():
     if not CONFUSION:
         print("  אין טבלת בלבול — הרץ תחילה את build_confusion_partner")
         return
-    clips = held_out_clips(args.clips)
+    clips = real_block_clips(args.clips)
     print(f"  {len(clips)} מקטעים מפרשות מוחזקות "
           f"(חציון {int(np.median([len(c[1]) for c in clips]))} מילים)\n")
 
