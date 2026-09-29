@@ -1265,18 +1265,24 @@ def score_word(spec, expected, ctx_prob=None):
 
 
 
-# The corpus's median word window is 1.10s, because Ben13 is recorded one
-# word per file and the corpus took whole files. Matching that geometry at
-# serving time matters more than matching the word's true extent. Measured on
-# real held-out audio, same words, same model:
+# Give each word everything up to the midpoint of the gap to its neighbour.
 #
-#   tight aligner cut            14.1%
-#   partition the audio          62.5%
-#   partition + 0.3s lead-in     65.6%
-#   fixed 1.10s window           78.1%   <- this
+# The corpus was cut by THIS aligner's own tight spans -- extract_ben13_
+# reading_words.py calls the same align_verse() and feeds word_spectrogram()
+# the raw start/end. So the training geometry is the aligner's own, and the
+# serving geometry should follow it.
 #
-# against 86.2% on the corpus's own windows. The window is a stand-in for the
-# recording the model was trained on, not a transcription boundary.
+# A fixed 2.0s window was served for a while on the strength of a sweep that
+# ran on spliced audio built from a partial manifest. Re-measured on blocks
+# the reader actually read in sequence, it was a 17.8-point regression:
+#
+#   fixed 2.0s window     50.5%
+#   tight (as the corpus) 66.6%
+#   partition             68.3%   <- this
+#
+# Partition edges out the corpus's own tight cut because a learner's word is
+# not bounded the way a single-word recording is: the melisma runs on, and
+# handing it to the next word loses it.
 # Swept over window length x lead-in on real held-out audio. 1.10s is the
 # corpus's MEDIAN window, but the best serving geometry is wider: 2.0s / 0.4s
 # scores 60.3% against 57.5% at the median, and past 2.0s it falls away again
@@ -1327,10 +1333,13 @@ def partition_spans(spans, duration):
     neighbour, the first word keeps the leading silence and the last keeps
     the tail -- which is what a one-word recording looks like.
     """
+    ks = sorted(spans)
     out = {}
-    for k, (a, _b) in spans.items():
-        lo = max(0.0, a - CORPUS_LEAD_IN_S)
-        out[k] = (lo, min(duration, lo + CORPUS_WINDOW_S))
+    for j, k in enumerate(ks):
+        lo = 0.0 if j == 0 else (spans[ks[j - 1]][1] + spans[k][0]) / 2
+        hi = (duration if j == len(ks) - 1
+              else (spans[k][1] + spans[ks[j + 1]][0]) / 2)
+        out[k] = (max(0.0, lo), min(duration, hi))
     return out
 
 
