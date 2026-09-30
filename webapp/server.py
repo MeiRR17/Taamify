@@ -1257,6 +1257,69 @@ def decide(conf, expected=None):
     return "unsure"
 
 
+def phrase_report(results, phrase_severity):
+    """The one line the app actually shows after a phrase: what to do next.
+
+    should_repeat already answers the halachic question (does anything here
+    invalidate the reading); this answers the product question (what does
+    the learner see). A phrase with only 'unsure' words gets its own message
+    rather than being folded into 'fine' or 'wrong' -- staying silent about
+    an unclear recording is not the same claim as confirming it was correct.
+    """
+    n = len(results)
+    wrong = [r for r in results if r["status"] == "wrong"]
+    unsure = [r for r in results if r["status"] in ("unsure", "unknown")]
+    if n and len(unsure) == n:
+        return {"headline": "לא הצלחתי לשמוע ברור מספיק — כדאי לנסות שוב",
+                "should_repeat": False}
+    if phrase_severity["should_repeat"]:
+        worst = next((r for r in wrong
+                     if r["severities"] and r["severities"][0] == "strict"),
+                     wrong[0] if wrong else None)
+        headline = (worst["summary"] if worst and worst.get("summary")
+                   else "יש כאן טעות שמשנה משמעות — כדאי לחזור על הקטע")
+        return {"headline": headline, "should_repeat": True}
+    if wrong:
+        return {"headline": f"{len(wrong)} מקום שכדאי לשים לב אליו — "
+                            f"לא משנה את המשמעות, אין צורך לחזור",
+                "should_repeat": False}
+    return {"headline": "הקטע נקרא נכון", "should_repeat": False}
+
+
+def word_summary(taam_note, channels):
+    """One sentence a learner can read, instead of five separate verdicts.
+
+    Every channel already carries its own severity and message; a child does
+    not read five JSON fields, so they are merged into one line, worst issue
+    first. This is station 7 of the plan -- until now the product had all
+    the parts (taam_note, per-channel messages, severity) and never combined
+    them into the single verdict the app actually shows.
+    """
+    order = {"strict": 0, "moderate": 1, "lenient": 2}
+    issues = []
+    if taam_note is not None:
+        issues.append((order[taam_note["level"]], taam_note["message"]))
+    for ch in (channels or {}).values():
+        if ch.get("status") == "wrong" and ch.get("message"):
+            issues.append((order.get(ch.get("severity"), 1), ch["message"]))
+    if not issues:
+        return None
+    issues.sort(key=lambda x: x[0])
+    worst = issues[0][0]
+    lead = issues[0][1]
+    rest = [msg for lvl, msg in issues[1:]]
+    if worst == 0:
+        prefix = "צריך לחזור: "
+    elif worst == 1:
+        prefix = "כדאי לשים לב: "
+    else:
+        prefix = "הערה: "
+    text = prefix + lead
+    if rest:
+        text += " · וגם: " + " · ".join(rest)
+    return text
+
+
 def score_word(spec, expected, ctx_prob=None):
     """The confidence the product acts on: the isolated word, blended with
     what the phrase implies when a phrase is available."""
@@ -1314,6 +1377,14 @@ TTA_OFFSETS = (-0.25, -0.125, 0.0, 0.125, 0.25)
 # and per-word choice would let the grammar be satisfied by cutting each word
 # wherever suits it.
 SHIFT_CANDIDATES = (-0.3, -0.15, 0.0, 0.15, 0.3)
+
+# Below this whole-phrase alignment score, every word's cut is untrustworthy
+# together, not individually weak -- see the gate at its use site. Swept on
+# real continuous audio (Data_Prep, the h2 measurement): -3.0 was the
+# widest threshold (75% of phrases kept) that still cleared both the
+# accuracy and the zero-confidence bar; -2.0 keeps fewer phrases (63%) for a
+# further 2.4-point accuracy gain. -3.0 favours coverage.
+ALIGN_GATE_SCORE = -3.0
 
 
 def partition_spans(spans, duration):
@@ -1457,6 +1528,19 @@ async def check_phrase(audio: UploadFile = File(...),
                 "message": "לא הצלחתי ליישר את ההקלטה לטקסט — נסה להקליט שוב",
                 "words": []}
 
+    # A phrase-level alignment score below this means the cut is untrustworthy
+    # for EVERY word in it, not just a weak one. Measured on real continuous
+    # audio: ungated, correct readings score 68.9% accuracy with 14.4% at
+    # zero confidence; gating out phrases below -3.0 (keeping 75% of them)
+    # raises that to 86.2% accuracy and 1.9% at zero -- both comfortably clear
+    # Stage A's exit bar. Staying silent on a bad cut is cheap; a confident
+    # wrong verdict built on one is the error this product cannot afford.
+    if score is not None and score < ALIGN_GATE_SCORE:
+        return {"aligned": False, "align_score": round(float(score), 3),
+                "message": "ההקלטה לא הייתה ברורה מספיק לניתוח מדויק — "
+                           "נסה שוב, לאט וברור",
+                "words": []}
+
     spans = partition_spans(spans, len(y16) / 16000)
     spans = best_shift(y, spans, len(y16) / 16000)
 
@@ -1521,6 +1605,7 @@ async def check_phrase(audio: UploadFile = File(...),
         results.append({
             "severities": levels,
             "taam_note": taam_note,
+            "summary": word_summary(taam_note, extra),
             "word": w, "expected": expected,
             "status": status,
             "channels": extra,
@@ -1544,6 +1629,7 @@ async def check_phrase(audio: UploadFile = File(...),
             "wrong": wrong_n, "unsure": unsure_n,
             "channel_summary": ch_summary,
             "severity": get_severity().summarise(results),
+            "report": phrase_report(results, get_severity().summarise(results)),
             "genre": genre,
             "used_context": ctx is not None,
             "saved_clip": log_phrase(raw_audio, word_list, taam_list,
