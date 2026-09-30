@@ -326,34 +326,44 @@ async function finish(blob) {
   showVerdict(d, false);
 }
 
+// Severity -> icon. Matches Data_Prep/severity.py: strict changes meaning
+// (this is the one that should feel like an actual correction), moderate is
+// a lesser flag, lenient is a note a learner should not read as "wrong".
+const SEV_ICON = { strict: "🔴", moderate: "🟡", lenient: "⚪" };
+
 function showVerdict(d, quiet) {
   const v = $("verdict"); if (!v) return;
   const all = d.checked > 0 && d.correct === d.checked;
   const none = d.checked === 0;
-  const wrong = d.words.filter(w => w.status === "wrong");
   const unk = d.words.filter(w => w.status === "unknown" || w.status === "unsupported");
-  v.className = "verdict show " + (none ? "mixed" : all ? "good" : wrong.length > 1 ? "poor" : "mixed");
+  // The server already decides severity per word (taam + every grammar
+  // channel) and rolls it into one headline -- report.should_repeat is the
+  // halachic question (does this invalidate the reading), which is a better
+  // basis for "does this look like a real problem" than a raw wrong-count.
+  // report.headline covers the whole phrase, not just the ta'am, so a word
+  // whose TA'AM was fine but whose STRESS or DAGESH was wrong is no longer
+  // silently missing from the summary the way the old wrong-count was.
+  const rep = d.report || null;
+  const flagged = d.words.filter(w => (w.severities || []).length);
+  const cls = none ? "mixed"
+    : rep ? (rep.should_repeat ? "poor" : flagged.length ? "mixed" : "good")
+    : (all ? "good" : flagged.length > 1 ? "poor" : "mixed");
+  v.className = "verdict show " + cls;
   let head;
   if (none) head = "לא הצלחתי לשמוע מספיק כדי לשפוט — נסה שוב";
+  else if (rep) head = `<b>${rep.headline}</b>`;
   else if (all) head = `<b>מצוין — כל ${d.checked} המילים נכונות</b>`;
   else head = `<b>${d.correct} מתוך ${d.checked} נכונות</b>`;
-  const lines = wrong.map(w =>
-    `<div>❌ <b>${w.word}</b> — צריך <b>${taamHe(w.expected)}</b>, נשמע כמו ${taamHe(w.heard)}</div>`)
-    .concat(unk.map(w => `<div>⚪ <b>${w.word}</b> — לא שמעתי ברור, זה לא נחשב טעות</div>`));
+  const lines = flagged.map(w => {
+    const icon = SEV_ICON[(w.severities || [])[0]] || "❗";
+    return `<div>${icon} <b>${w.word}</b> — ${w.summary || ""}</div>`;
+  }).concat(unk.map(w => `<div>⚪ <b>${w.word}</b> — לא שמעתי ברור, זה לא נחשב טעות</div>`));
   v.innerHTML = head + (lines.length ? `<div class="detail">${lines.join("")}</div>` : "");
   if (!quiet) {
     $("status").textContent = all ? "נשלט ✓" : none ? "לא ברור" : `${d.correct}/${d.checked}`;
     $("hint").textContent = all && cur < flat.length - 1
       ? "אפשר להמשיך לקטע הבא" : "אפשר להקליט שוב";
   }
-}
-
-const HE = {};
-function taamHe(t) {
-  if (!t) return "—";
-  if (HE[t]) return HE[t];
-  const p = flat[cur]?.words.find(w => w.taam === t);
-  return p?.taam_he || t;
 }
 
 $("rec").addEventListener("click", toggle);

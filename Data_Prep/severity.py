@@ -74,12 +74,45 @@ LEVEL_HE = {
 }
 
 # per channel. The ta'am channel is resolved per-class below.
+#
+# stress and guttural are downgraded from their grammatically-correct STRICT
+# rank (see the comments below) on 2026-09-30, pending calibration. Measured
+# through the live API on Ben13's own CORRECT continuous readings, these
+# channels call "wrong" on audio that is right at rates the ta'am channel
+# would never be allowed to ship at:
+#
+#   stress    17.0% false "wrong"   (ta'am's calibrated rate: 2.0%)
+#   dagesh    18.4%
+#   guttural  10.6%
+#   sheva     20.4%
+#
+# Unlike the ta'am channel, these run_channels() verdicts are a raw argmax
+# with no window-geometry tuning, no align-quality gate, and no percentile-
+# derived threshold -- exactly the three fixes that took the ta'am channel's
+# own false-contradict rate from ~14% down to 2%, none of which have been
+# done here yet. A confidence cutoff only partly separates true from false
+# (median confidence 0.99 right vs 0.86-0.94 wrong -- much closer than
+# ta'am's pattern), so it is not a substitute for that work.
+#
+# STRICT drives should_repeat: a learner is told the reading is invalid and
+# must be redone. That is not a claim these two channels can currently back
+# up, so they are held at MODERATE (a note, not a repeat) until they get the
+# same treatment ta'am received. dagesh/sheva were already MODERATE, so no
+# change there, but their false-positive rates are just as high and their
+# messages should be read with that caveat until the same work is done.
 CHANNEL_SEVERITY = {
-    "stress": STRICT,      # בָּאָה / אוֹרִי -- tense and mood turn on it
-    "guttural": STRICT,    # ayin vs alef swaps the root
+    "stress": MODERATE,    # STRICT in principle (בָּאָה/אוֹרִי) -- see above
+    "guttural": MODERATE,  # STRICT in principle (ayin/alef swaps the root)
     "dagesh": MODERATE,    # b/v, k/kh can change a word, often does not
     "sheva": MODERATE,     # pronounced or not; can shift a form
 }
+
+# Below this per-word confidence, run_channels() reports "unsure" instead of
+# a verdict either way -- the same three-state discipline the ta'am channel
+# uses, applied crudely here since a proper percentile calibration has not
+# been done. Halves the false-"wrong" rate at the cost of ~15% coverage; see
+# the comment above CHANNEL_SEVERITY for the full numbers.
+CHANNEL_MIN_CONFIDENCE = 0.9
 
 
 def taam_severity(taam: str) -> str:

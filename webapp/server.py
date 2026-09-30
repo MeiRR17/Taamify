@@ -1126,8 +1126,20 @@ def run_channels(spec_img, pointed_word, wanted=None):
             probs = torch.softmax(ch["model"](t), dim=1)[0].cpu().numpy()
         heard = ch["classes"][int(probs.argmax())]
         conf = float(probs.max())
+        # These channels are a raw argmax with no window-geometry tuning or
+        # align-quality gate -- see Data_Prep/severity.py's comment above
+        # CHANNEL_MIN_CONFIDENCE for the measured false-positive rates on
+        # correct audio (10-20%, against the ta'am channel's calibrated 2%).
+        # A minimum-confidence three-state cut is a crude stand-in for real
+        # calibration, but it is what stands between shipping this and
+        # shipping an uncalibrated argmax as a verdict.
+        sev = get_severity()
+        if conf < sev.CHANNEL_MIN_CONFIDENCE:
+            status = "unsure"
+        else:
+            status = "ok" if heard == expected else "wrong"
         out[name] = {"expected": expected, "heard": heard,
-                     "status": "ok" if heard == expected else "wrong",
+                     "status": status,
                      "confidence": round(conf, 3), "he": ch["he"]}
     return out
 
