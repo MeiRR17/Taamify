@@ -1267,7 +1267,13 @@ def phrase_report(results, phrase_severity):
     an unclear recording is not the same claim as confirming it was correct.
     """
     n = len(results)
-    wrong = [r for r in results if r["status"] == "wrong"]
+    # A word can carry an issue from a channel (stress/dagesh/guttural/sheva)
+    # even when its ta'am status is "ok" -- status only reflects the ta'am
+    # verdict, but severities is filled from every channel. Using status
+    # alone here undercounted: a phrase with only a wrong channel on an
+    # otherwise-correct word reported "read correctly" while that word's own
+    # summary said otherwise.
+    wrong = [r for r in results if r["severities"]]
     unsure = [r for r in results if r["status"] in ("unsure", "unknown")]
     if n and len(unsure) == n:
         return {"headline": "לא הצלחתי לשמוע ברור מספיק — כדאי לנסות שוב",
