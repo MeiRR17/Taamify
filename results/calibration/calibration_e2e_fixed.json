@@ -1,0 +1,25 @@
+{
+  "say_wrong_below": 0.017,
+  "say_correct_above": 0.018,
+  "has_neutral_band": true,
+  "contradict_rate": 0.0195,
+  "bless_rate": 0.1014,
+  "catch_rate": 0.8945,
+  "contradict_budget": 0.02,
+  "bless_budget": 0.1,
+  "n_positive": 2407,
+  "n_negative": 2407,
+  "n_clips": 861,
+  "held_out_parashot": [
+    "13",
+    "29",
+    "37",
+    "41",
+    "42",
+    "5",
+    "6",
+    "8"
+  ],
+  "context_weight": 0.7,
+  "derived_on": "real clips posted to /api/check_phrase -- the aligner's own cuts, not the corpus's pre-cut windows"
+}

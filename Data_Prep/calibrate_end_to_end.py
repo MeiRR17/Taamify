@@ -78,7 +78,7 @@ def _context_weight():
     return srv.CONTEXT_WEIGHT
 
 
-def real_block_clips(limit):
+def real_block_clips(limit, min_words=2):
     """Blocks the reader actually read in sequence, from the held-out parashot.
 
     The earlier fixture spliced single-word recordings together, and it was
@@ -88,43 +88,51 @@ def real_block_clips(limit):
     transitions. Every serving-path number measured on it described a corpus
     that does not exist.
 
-    The corpus already contains what was needed: grouping BEN13R by
-    (verse_ref, segment_block) gives 21,587 blocks of 2-8 words, real
-    continuous audio with real per-word boundaries. Those are used here.
+    THE BUG THIS REPLACES
+
+    A second version of this function picked a candidate file by matching
+    duration against a verse-level pool of `local_path`s -- built by grouping
+    the manifest on (book, perek, pasuk) alone. That pool is not one file per
+    verse: `manifest_yerushalmi.json` has one row (and one file) PER BLOCK,
+    and a verse with several blocks contributes several *different* files
+    to that pool, each covering different words. Duration-matching against
+    the wrong candidate in that pool was silent and frequent: checked
+    directly (comparing the stored training spectrogram to a fresh extract
+    at the same boundaries from the "matched" file), 32% of blocks landed on
+    a file whose spectrogram diverged sharply (mean |delta| > 5 dB) from the
+    one actually used to build the corpus. That is not measurement noise --
+    it fed the wrong audio against the right words and taamim, and every
+    i1/j1/l1/n1-n3/o1/p1/p2/aliyah_walkthrough-style measurement built on the
+    earlier version of this function inherited that error at whatever rate
+    it happened to hit.
+
+    THE FIX
+
+    The manifest's `block` field and the corpus's own `segment_block`
+    (copied straight from it during extraction) are the same value for the
+    same block -- an exact, unambiguous join, verified on 3,000 corpus rows
+    with zero misses. No duration guessing.
     """
-    import librosa
     meta = json.loads((P / "features_v3_word" / "BEN13R_meta.json")
                       .read_text(encoding="utf-8"))
     man = json.loads((P / "data" / "ben13_reading" /
                       "manifest_yerushalmi.json").read_text(encoding="utf-8"))
-    audio = defaultdict(set)
-    for e in man:
-        audio[(e["book"], e["perek"], e["pasuk"])].add(e["local_path"])
+    by_block = {(r["book"], r["perek"], r["pasuk"], str(r["block"])): r["local_path"]
+               for r in man}
     blocks = defaultdict(list)
     for i, m in enumerate(meta):
         blocks[(m["verse_ref"], m["segment_block"])].append(i)
     held = set(HELD_OUT)
     out = []
-    for (ref, _blk), idxs in blocks.items():
-        if len(idxs) < 3 or str(meta[idxs[0]].get("parasha")) not in held:
+    for (ref, blk), idxs in blocks.items():
+        if len(idxs) < min_words or str(meta[idxs[0]].get("parasha")) not in held:
             continue
         idxs = sorted(idxs, key=lambda i: meta[i]["start"])
         b, c, v = ref.split(".")
-        chosen = None
-        for pth in audio.get((b, c, v), ()):
-            if not (P / pth).exists():
-                continue
-            try:
-                d = librosa.get_duration(path=str(P / pth))
-            except Exception:
-                continue
-            # the file that actually holds this block: its length matches
-            if abs(d - meta[idxs[-1]]["end"]) < 0.4:
-                chosen = str(P / pth)
-                break
-        if not chosen:
+        path = by_block.get((b, c, v, str(blk)))
+        if not path or not (P / path).exists():
             continue
-        out.append((chosen, [meta[i]["word_raw"] for i in idxs],
+        out.append((str(P / path), [meta[i]["word_raw"] for i in idxs],
                     [meta[i]["taam"] for i in idxs]))
         if len(out) >= limit:
             break
