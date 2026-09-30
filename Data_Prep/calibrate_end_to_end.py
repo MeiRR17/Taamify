@@ -67,6 +67,17 @@ BLESS_BUDGET = 0.10
 URL = "http://127.0.0.1:8000/api/check_phrase"
 
 
+def _context_weight():
+    """The server's CONTEXT_WEIGHT, so the saved calibration records which
+    score it was derived against -- get_calibration() refuses to serve a
+    file whose recorded weight does not match the live one."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("srv", P / "webapp" / "server.py")
+    srv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(srv)
+    return srv.CONTEXT_WEIGHT
+
+
 def real_block_clips(limit):
     """Blocks the reader actually read in sequence, from the held-out parashot.
 
@@ -307,6 +318,7 @@ def main():
         "n_positive": len(pos), "n_negative": len(neg),
         "n_clips": aligned,
         "held_out_parashot": sorted(HELD_OUT),
+        "context_weight": _context_weight(),
         "derived_on": ("real clips posted to /api/check_phrase -- the "
                        "aligner's own cuts, not the corpus's pre-cut windows"),
     }, indent=2, ensure_ascii=False), encoding="utf-8")

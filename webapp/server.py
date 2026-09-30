@@ -62,7 +62,7 @@ VERIFY_HEAD_PATH = PROJECT_DIR / "results" / "verify_head_cal.pth"   # see note 
 # number, which silently removed the neutral state the product depends on:
 # every word was forced into "correct" or "wrong", including the ones the
 # model had no real opinion about.
-CALIBRATION_PATH = PROJECT_DIR / "results" / "calibration" / "calibration_served.json"
+CALIBRATION_PATH = PROJECT_DIR / "results" / "calibration" / "calibration_e2e_large.json"
 ATTEMPTS_DIR = PROJECT_DIR / "app_assets" / "collected_attempts"
 ATTEMPTS_LOG = ATTEMPTS_DIR / "attempts_log.jsonl"
 BEN13_SEGMENTS_DIR = PROJECT_DIR / "data" / "ben13_segments"
