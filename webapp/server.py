@@ -1108,9 +1108,33 @@ def expected_channel_label(name, pointed_word):
     return None
 
 
-def run_channels(spec_img, pointed_word, wanted=None):
+# Each channel gets its own cut, not ta'am's. Swept on real continuous audio
+# AFTER fixing the file-matching bug that made the first sweep look flat
+# (results/calibration + PLAN_STAGE_A.md "channel window sweep"): ta'am and
+# stress read the whole word's melodic contour and want the wide window;
+# dagesh/guttural/sheva are about a specific phonetic detail at a specific
+# spot and are diluted by the rest of the word, so a tight window wins:
+#
+#   stress    2.0/0.4   79.3% (= the shared window already; no change)
+#   dagesh    1.1/0.25  89.3% vs 86.1% at the shared window (+3.2)
+#   guttural  0.6/0.1   88.4% vs 86.4%                      (+2.0)
+#   sheva     0.6/0.1   87.7% vs 81.9%                      (+5.8)
+CHANNEL_WINDOW = {
+    "stress": (2.0, 0.4),     # same as CORPUS_WINDOW_S/CORPUS_LEAD_IN_S below
+    "dagesh": (1.1, 0.25),
+    "guttural": (0.6, 0.1),
+    "sheva": (0.6, 0.1),
+}
+
+
+def run_channels(y, onset, duration, pointed_word, wanted=None):
     """Every extra channel that applies to this word. Silent on the ones that
-    do not apply, rather than reporting a meaningless verdict."""
+    do not apply, rather than reporting a meaningless verdict.
+
+    `onset` is the word's aligned start BEFORE ta'am's own lead-in was
+    subtracted -- each channel then cuts its own window from that same
+    onset, at its own measured geometry, rather than reusing ta'am's cut.
+    """
     out = {}
     for name in (wanted or CHANNELS):
         expected = expected_channel_label(name, pointed_word)
@@ -1118,6 +1142,11 @@ def run_channels(spec_img, pointed_word, wanted=None):
             continue
         ch = get_channel(name)
         if ch is None:
+            continue
+        win, lead = CHANNEL_WINDOW[name]
+        lo = max(0.0, onset - lead)
+        spec_img = word_spectrogram(y, lo, min(duration, lo + win))
+        if spec_img is None:
             continue
         st = get_model()
         x = ((spec_img - spec_img.mean()) / (spec_img.std() + 1e-8))
@@ -1539,6 +1568,7 @@ async def check_phrase(audio: UploadFile = File(...),
     prepared = [{"raw": w, "norm": cv.normalize_word(w)} for w in word_list]
     try:
         spans, score, _ = va.align_verse(y16, prepared)
+        raw_spans = dict(spans) if spans else None
     except Exception as e:
         return {"error": f"alignment failed: {e}"}
     if spans is None:
@@ -1603,7 +1633,15 @@ async def check_phrase(audio: UploadFile = File(...),
         checked += 1
         correct += 1 if status == "ok" else 0
         top3, _ = classify(spec, genre=genre)
-        extra = run_channels(spec, w, wanted)
+        # st_ is ta'am's own cut: partition_spans() moved it to the midpoint
+        # with the previous word, then best_shift() offset it again -- it is
+        # NOT "the aligned onset minus ta'am's lead-in", so reconstructing an
+        # onset from it (an earlier version of this line did exactly that)
+        # cuts every channel from the wrong point. The raw aligner onset,
+        # captured before either transform, is what each channel's own
+        # lead-in is measured relative to.
+        onset = raw_spans[i][0] if raw_spans and i in raw_spans else st_
+        extra = run_channels(y, onset, len(y16) / 16000, w, wanted)
         sev = get_severity()
         levels = []
         if status == "wrong":
