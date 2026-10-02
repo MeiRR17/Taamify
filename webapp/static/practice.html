@@ -75,6 +75,14 @@ button:disabled{opacity:.4;cursor:default}
 .verdict.poor{background:var(--bad-soft);color:var(--bad)}
 .verdict b{font-weight:700}
 .detail{margin-top:9px;font-size:12.5px;color:var(--ink2);line-height:1.8}
+.channels{display:flex;flex-wrap:wrap;gap:6px 10px;margin-top:12px;
+  padding-top:12px;border-top:1px solid var(--line)}
+.ch{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--ink2)}
+.ch b{font-weight:500;color:var(--ink)}
+.ch .dot{width:7px;height:7px;border-radius:50%;flex:none}
+.ch.ok .dot{background:var(--ok)}
+.ch.bad .dot{background:var(--bad)}
+.ch.none .dot{background:var(--ink3);opacity:.5}
 .detail div{margin:2px 0}
 
 .nav{display:flex;gap:8px;margin-top:16px}
@@ -223,6 +231,7 @@ function render() {
     <div class="taamrow">${p.words.map((w, i) =>
       `<span class="taam ${cls(i)}">${w.taam_he || "—"}</span>`).join("")}</div>
     <div class="verdict" id="verdict"></div>
+    <div class="channels" id="channels"></div>
     <div class="nav">
       <button id="prev">← הקודם</button>
       <button id="next">הבא →</button>
@@ -364,6 +373,38 @@ function showVerdict(d, quiet) {
     $("hint").textContent = all && cur < flat.length - 1
       ? "אפשר להמשיך לקטע הבא" : "אפשר להקליט שוב";
   }
+  renderChannels(d);
+}
+
+// Every channel the server can check, shown explicitly -- not just
+// mentioned in passing when something goes wrong. The product has four
+// grammar channels beyond the ta'am itself (stress/dagesh/guttural/sheva),
+// and until now a learner who read perfectly had no way to tell they were
+// even being checked, let alone see each one fire.
+const CH_LABELS = { stress: "הטעמה", dagesh: "דגש קל", guttural: "ע׳ / א׳", sheva: "שווא נע/נח" };
+
+function renderChannels(d) {
+  const box = $("channels"); if (!box) return;
+  const cs = d.channel_summary || {};
+  const rows = [];
+  // the ta'am verdict itself, in the same row as the grammar channels
+  if (d.checked) {
+    const taamOk = d.correct === d.checked;
+    rows.push({ name: "טעם", cls: taamOk ? "ok" : "bad",
+               n: `${d.correct}/${d.checked}` });
+  }
+  for (const key of Object.keys(CH_LABELS)) {
+    const c = cs[key];
+    if (!c || !c.checked) {
+      rows.push({ name: CH_LABELS[key], cls: "none", n: "לא רלוונטי בקטע זה" });
+      continue;
+    }
+    rows.push({ name: CH_LABELS[key], cls: c.correct === c.checked ? "ok" : "bad",
+               n: `${c.correct}/${c.checked}` });
+  }
+  box.innerHTML = rows.map(r =>
+    `<span class="ch ${r.cls}"><i class="dot"></i><b>${r.name}</b> ${r.n}</span>`
+  ).join("");
 }
 
 $("rec").addEventListener("click", toggle);
