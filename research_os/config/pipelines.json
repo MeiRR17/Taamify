@@ -1,0 +1,300 @@
+{
+  "schemaVersion": 1,
+  "updated": "2026-10-21",
+  "state": "design_and_documented_baseline_no_live_connection",
+  "researchObject": "Taamify — טעמי המקרא בנוסח ספרדי־ירושלמי",
+  "sourcePolicy": "Documented status from PLAN_STAGE_A.md dated 2026-10-02; not a live code verification",
+  "runtime": {
+    "primary": {
+      "id": "mac-pro-m1-max",
+      "name": "MacBook Pro M1 Max",
+      "cpuCores": 10,
+      "gpuCores": 32,
+      "unifiedMemoryGB": 64,
+      "role": "local training + queue; availability unverified"
+    },
+    "secondary": {
+      "id": "mac-air-m4",
+      "name": "MacBook Air M4",
+      "unifiedMemoryGB": 16,
+      "role": "development/smoke tests; not always-on"
+    },
+    "unverified": {
+      "id": "windows",
+      "name": "Windows Ryzen 5 3600",
+      "memoryGB": 32,
+      "gpu": "unknown; CUDA unavailable until measured"
+    }
+  },
+  "baseline": {
+    "source": "Taamify / PLAN_STAGE_A.md",
+    "sourceDate": "2026-10-02",
+    "dataScope": "single reader, held-out parashot, through live API",
+    "taamAccuracy": 0.879,
+    "errorDetectionAt2PctFalseAlarm": 0.894,
+    "notes": "Documented outcome, not independently reproduced; unseen-reader generalization unverified"
+  },
+  "policies": {
+    "preferredDevice": "mac-pro-m1-max",
+    "maxHeavyGpuJobsPerDevice": 1,
+    "noCloudPayg": true,
+    "externalSpeakerHoldout": "blocked_until_real_new_readers",
+    "holdoutProtection": "no speaker or source or synthetic derivative crosses evaluation boundaries",
+    "privacy": "no audio or personal records in this repository"
+  },
+  "pipelines": [
+    {
+      "id": "P00",
+      "name": "DeepCNN baseline",
+      "hyp": "H0",
+      "category": "control",
+      "status": "audit",
+      "fits": 3,
+      "epochs": 30,
+      "needs": [
+        "Stage A exact checkpoint + data"
+      ]
+    },
+    {
+      "id": "P01",
+      "name": "Prosody F0 / rhythm",
+      "hyp": "H1",
+      "category": "prosody",
+      "status": "pilot",
+      "fits": 3,
+      "epochs": 20,
+      "needs": [
+        "verified alignment",
+        "pitch curve QC"
+      ]
+    },
+    {
+      "id": "P02",
+      "name": "Multi-resolution mel",
+      "hyp": "H1",
+      "category": "acoustic",
+      "status": "pilot",
+      "fits": 3,
+      "epochs": 30,
+      "needs": [
+        "same-width random-window control"
+      ]
+    },
+    {
+      "id": "P03",
+      "name": "WavLM frozen embeddings",
+      "hyp": "H2",
+      "category": "pretrained",
+      "status": "pilot",
+      "fits": 3,
+      "epochs": 20,
+      "needs": [
+        "embedding extraction profiling"
+      ]
+    },
+    {
+      "id": "P04",
+      "name": "W2v-BERT frozen embeddings",
+      "hyp": "H2",
+      "category": "pretrained",
+      "status": "memory_gate",
+      "fits": 3,
+      "epochs": 20,
+      "needs": [
+        "600M encoder memory and licence audit"
+      ]
+    },
+    {
+      "id": "P05",
+      "name": "Music features (MuQ)",
+      "hyp": "H3",
+      "category": "music",
+      "status": "research_only",
+      "fits": 3,
+      "epochs": 20,
+      "needs": [
+        "non-commercial license review"
+      ]
+    },
+    {
+      "id": "P06",
+      "name": "DeepCNN + F0 fusion",
+      "hyp": "H1",
+      "category": "fusion",
+      "status": "pilot",
+      "fits": 3,
+      "epochs": 30,
+      "needs": [
+        "paired baseline"
+      ]
+    },
+    {
+      "id": "P07",
+      "name": "Teacher-student verification",
+      "hyp": "H5",
+      "category": "verification",
+      "status": "needs_errors",
+      "fits": 3,
+      "epochs": 20,
+      "needs": [
+        "human-labelled real wrong readings"
+      ]
+    },
+    {
+      "id": "P08",
+      "name": "Voice conversion augmentation",
+      "hyp": "H4",
+      "category": "augmentation",
+      "status": "needs_consent",
+      "fits": 3,
+      "epochs": 30,
+      "needs": [
+        "licensed reference speakers",
+        "pitch shift control",
+        "melodic fidelity audit"
+      ]
+    },
+    {
+      "id": "P09",
+      "name": "Domain-adversarial speaker",
+      "hyp": "H6",
+      "category": "invariance",
+      "status": "needs_readers",
+      "fits": 9,
+      "epochs": 30,
+      "needs": [
+        "multiple real speakers"
+      ]
+    },
+    {
+      "id": "P10",
+      "name": "Contrastive speaker-robust",
+      "hyp": "H6",
+      "category": "invariance",
+      "status": "needs_readers",
+      "fits": 9,
+      "epochs": 30,
+      "needs": [
+        "speaker-balanced positives and negatives"
+      ]
+    },
+    {
+      "id": "P11",
+      "name": "Adapters / LoRA",
+      "hyp": "H2",
+      "category": "adaptation",
+      "status": "after_encoder_choice",
+      "fits": 3,
+      "epochs": 20,
+      "needs": [
+        "pretrained encoder finalist"
+      ]
+    },
+    {
+      "id": "P12",
+      "name": "Teacher distillation to ONNX",
+      "hyp": "H7",
+      "category": "deployment",
+      "status": "after_winner",
+      "fits": 3,
+      "epochs": 30,
+      "needs": [
+        "validated teacher and ONNX parity"
+      ]
+    }
+  ],
+  "humanHours": [
+    {
+      "phase": "A | Audit & preregistration",
+      "academic": [
+        18,
+        30
+      ],
+      "product": [
+        4,
+        8
+      ],
+      "engineering": [
+        12,
+        22
+      ]
+    },
+    {
+      "phase": "B | Readers & gold labels",
+      "academic": [
+        35,
+        70
+      ],
+      "product": [
+        8,
+        18
+      ],
+      "engineering": [
+        12,
+        25
+      ]
+    },
+    {
+      "phase": "C | Experiment families",
+      "academic": [
+        50,
+        95
+      ],
+      "product": [
+        8,
+        16
+      ],
+      "engineering": [
+        28,
+        60
+      ]
+    },
+    {
+      "phase": "D | Statistical generalization",
+      "academic": [
+        28,
+        55
+      ],
+      "product": [
+        8,
+        14
+      ],
+      "engineering": [
+        16,
+        30
+      ]
+    },
+    {
+      "phase": "E | Product verification",
+      "academic": [
+        10,
+        22
+      ],
+      "product": [
+        42,
+        80
+      ],
+      "engineering": [
+        30,
+        55
+      ]
+    },
+    {
+      "phase": "F | Paper & reproduction",
+      "academic": [
+        35,
+        70
+      ],
+      "product": [
+        6,
+        12
+      ],
+      "engineering": [
+        7,
+        15
+      ]
+    }
+  ],
+  "canonicalRegistry": "MeiRR17/Taamify:research_os/config/pipelines.json",
+  "dvirOsMirror": "MeiRR17/dvir-os:config/taamify-research.json; stale until explicitly synced"
+}
