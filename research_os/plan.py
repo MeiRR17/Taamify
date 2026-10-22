@@ -91,7 +91,7 @@ def main() -> None:
     for item in result["pipelines"]:
         hours = item["hours_measured_inputs"]
         time = f"{hours:.2f} accelerator-h (provided input)" if hours is not None else "unmeasured"
-        print(f"  {item['id']}  {item['status']:<24} {item['fits']}x{item['epochs']:<3}  {time}  {item['name']}")
+        print(f"  {item['id']}  {item['status']:<24} {item['fits']}x{item['epochs_per_fit']:<3}  {time}  {item['name']}")
     print("  Human academic/product/engineering hours are estimates, never computed GPU time.")
     for name, estimate in result["human_hours_planned"].items():
         print(f"    {name}: {estimate['minimum']}–{estimate['maximum']} planned person-hours")
