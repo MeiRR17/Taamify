@@ -1,0 +1,425 @@
+{
+  "status": "candidate -- NOT served; webapp/server.py still uses CHANNEL_MIN_CONFIDENCE",
+  "rule": "p_exp < say_wrong_below -> wrong; >= say_correct_above -> ok; else unsure",
+  "contradict_budget": 0.02,
+  "bless_budget": 0.1,
+  "fixed_correct_above": 0.9,
+  "split": "per parasha, verses split 50/50 by seed; cal and eval verse-disjoint",
+  "held_out_parashot": [
+    "5",
+    "6",
+    "8",
+    "13",
+    "29",
+    "37",
+    "41",
+    "42"
+  ],
+  "proxy_note": "proxy_catch/proxy_blessed flip the expected label on correct audio; not authentic learner errors",
+  "gated_blocks": {
+    "cal": 24,
+    "eval": 14
+  },
+  "rows_sha256": "d753bef549b34b090de6e0d09b5cda90fe377a0f18faaf303cea79f89bc28387",
+  "thresholds": {
+    "stress": {
+      "say_wrong_below": 0.014,
+      "say_correct_above": 0.9
+    },
+    "dagesh": {
+      "say_wrong_below": 0.01,
+      "say_correct_above": 0.9
+    },
+    "guttural": {
+      "say_wrong_below": 0.0048,
+      "say_correct_above": 0.9
+    },
+    "sheva": {
+      "say_wrong_below": 0.0077,
+      "say_correct_above": 0.9
+    }
+  },
+  "combined_any_channel_wrong_on_correct_words_eval": {
+    "before": 0.13703703703703704,
+    "after": 0.027777777777777776
+  },
+  "channels": {
+    "stress": {
+      "n_cal": 969,
+      "n_eval": 1005,
+      "eval_parashot": [
+        "5",
+        "6",
+        "8",
+        "13",
+        "29",
+        "37",
+        "41",
+        "42"
+      ],
+      "candidate": {
+        "say_wrong_below": 0.014,
+        "say_correct_above": 0.9
+      },
+      "before_eval": {
+        "false_accusation": 0.07064676616915423,
+        "coverage_correct": 0.6865671641791045,
+        "proxy_catch": 0.6159203980099502,
+        "proxy_blessed": 0.07064676616915423,
+        "fa_ci95_blocks": [
+          0.05445460362362767,
+          0.08631042025243832
+        ]
+      },
+      "after_eval": {
+        "false_accusation": 0.014925373134328358,
+        "coverage_correct": 0.6308457711442786,
+        "proxy_catch": 0.37910447761194027,
+        "proxy_blessed": 0.07064676616915423,
+        "fa_ci95_blocks": [
+          0.007881385897864383,
+          0.023092369477911646
+        ]
+      },
+      "after_cal": {
+        "false_accusation": 0.0196078431372549,
+        "coverage_correct": 0.6336429308565531,
+        "proxy_catch": 0.3746130030959752,
+        "proxy_blessed": 0.07120743034055728
+      },
+      "after_eval_by_parasha": {
+        "5": {
+          "false_accusation": 0.014814814814814815,
+          "coverage_correct": 0.6518518518518519,
+          "proxy_catch": 0.4,
+          "proxy_blessed": 0.07407407407407407
+        },
+        "6": {
+          "false_accusation": 0.008547008547008548,
+          "coverage_correct": 0.5982905982905983,
+          "proxy_catch": 0.39316239316239315,
+          "proxy_blessed": 0.06837606837606838
+        },
+        "8": {
+          "false_accusation": 0.007407407407407408,
+          "coverage_correct": 0.7037037037037037,
+          "proxy_catch": 0.4074074074074074,
+          "proxy_blessed": 0.02962962962962963
+        },
+        "13": {
+          "false_accusation": 0.024193548387096774,
+          "coverage_correct": 0.6370967741935484,
+          "proxy_catch": 0.3790322580645161,
+          "proxy_blessed": 0.11290322580645161
+        },
+        "29": {
+          "false_accusation": 0.01680672268907563,
+          "coverage_correct": 0.6134453781512605,
+          "proxy_catch": 0.3697478991596639,
+          "proxy_blessed": 0.12605042016806722
+        },
+        "37": {
+          "false_accusation": 0.023255813953488372,
+          "coverage_correct": 0.5736434108527132,
+          "proxy_catch": 0.32558139534883723,
+          "proxy_blessed": 0.06201550387596899
+        },
+        "41": {
+          "false_accusation": 0.025,
+          "coverage_correct": 0.6583333333333333,
+          "proxy_catch": 0.4,
+          "proxy_blessed": 0.06666666666666667
+        },
+        "42": {
+          "false_accusation": 0.0,
+          "coverage_correct": 0.6031746031746031,
+          "proxy_catch": 0.35714285714285715,
+          "proxy_blessed": 0.031746031746031744
+        }
+      }
+    },
+    "dagesh": {
+      "n_cal": 434,
+      "n_eval": 435,
+      "eval_parashot": [
+        "5",
+        "6",
+        "8",
+        "13",
+        "29",
+        "37",
+        "41",
+        "42"
+      ],
+      "candidate": {
+        "say_wrong_below": 0.01,
+        "say_correct_above": 0.9
+      },
+      "before_eval": {
+        "false_accusation": 0.08045977011494253,
+        "coverage_correct": 0.7586206896551724,
+        "proxy_catch": 0.6781609195402298,
+        "proxy_blessed": 0.08045977011494253,
+        "fa_ci95_blocks": [
+          0.056068246033470985,
+          0.10551814727992885
+        ]
+      },
+      "after_eval": {
+        "false_accusation": 0.009195402298850575,
+        "coverage_correct": 0.6873563218390805,
+        "proxy_catch": 0.37471264367816093,
+        "proxy_blessed": 0.08045977011494253,
+        "fa_ci95_blocks": [
+          0.0022222222222222222,
+          0.018867924528301886
+        ]
+      },
+      "after_cal": {
+        "false_accusation": 0.020737327188940093,
+        "coverage_correct": 0.7027649769585254,
+        "proxy_catch": 0.35023041474654376,
+        "proxy_blessed": 0.06682027649769585
+      },
+      "after_eval_by_parasha": {
+        "5": {
+          "false_accusation": 0.0,
+          "coverage_correct": 0.7017543859649122,
+          "proxy_catch": 0.42105263157894735,
+          "proxy_blessed": 0.07017543859649122
+        },
+        "6": {
+          "false_accusation": 0.017857142857142856,
+          "coverage_correct": 0.8214285714285714,
+          "proxy_catch": 0.5,
+          "proxy_blessed": 0.05357142857142857
+        },
+        "8": {
+          "false_accusation": 0.0,
+          "coverage_correct": 0.631578947368421,
+          "proxy_catch": 0.2631578947368421,
+          "proxy_blessed": 0.05263157894736842
+        },
+        "13": {
+          "false_accusation": 0.04,
+          "coverage_correct": 0.58,
+          "proxy_catch": 0.26,
+          "proxy_blessed": 0.1
+        },
+        "29": {
+          "false_accusation": 0.014925373134328358,
+          "coverage_correct": 0.6716417910447762,
+          "proxy_catch": 0.3880597014925373,
+          "proxy_blessed": 0.1044776119402985
+        },
+        "37": {
+          "false_accusation": 0.0,
+          "coverage_correct": 0.6444444444444445,
+          "proxy_catch": 0.4222222222222222,
+          "proxy_blessed": 0.1111111111111111
+        },
+        "41": {
+          "false_accusation": 0.0,
+          "coverage_correct": 0.6530612244897959,
+          "proxy_catch": 0.30612244897959184,
+          "proxy_blessed": 0.14285714285714285
+        },
+        "42": {
+          "false_accusation": 0.0,
+          "coverage_correct": 0.7777777777777778,
+          "proxy_catch": 0.42592592592592593,
+          "proxy_blessed": 0.018518518518518517
+        }
+      }
+    },
+    "guttural": {
+      "n_cal": 491,
+      "n_eval": 514,
+      "eval_parashot": [
+        "5",
+        "6",
+        "8",
+        "13",
+        "29",
+        "37",
+        "41",
+        "42"
+      ],
+      "candidate": {
+        "say_wrong_below": 0.0048,
+        "say_correct_above": 0.9
+      },
+      "before_eval": {
+        "false_accusation": 0.038910505836575876,
+        "coverage_correct": 0.7937743190661478,
+        "proxy_catch": 0.754863813229572,
+        "proxy_blessed": 0.038910505836575876,
+        "fa_ci95_blocks": [
+          0.02343408677184466,
+          0.05468948085699796
+        ]
+      },
+      "after_eval": {
+        "false_accusation": 0.013618677042801557,
+        "coverage_correct": 0.7684824902723736,
+        "proxy_catch": 0.3560311284046693,
+        "proxy_blessed": 0.038910505836575876,
+        "fa_ci95_blocks": [
+          0.003983865729923249,
+          0.024
+        ]
+      },
+      "after_cal": {
+        "false_accusation": 0.020366598778004074,
+        "coverage_correct": 0.7942973523421588,
+        "proxy_catch": 0.35234215885947046,
+        "proxy_blessed": 0.05702647657841141
+      },
+      "after_eval_by_parasha": {
+        "5": {
+          "false_accusation": 0.013888888888888888,
+          "coverage_correct": 0.7916666666666666,
+          "proxy_catch": 0.375,
+          "proxy_blessed": 0.041666666666666664
+        },
+        "6": {
+          "false_accusation": 0.015384615384615385,
+          "coverage_correct": 0.7384615384615385,
+          "proxy_catch": 0.4153846153846154,
+          "proxy_blessed": 0.07692307692307693
+        },
+        "8": {
+          "false_accusation": 0.012345679012345678,
+          "coverage_correct": 0.8024691358024691,
+          "proxy_catch": 0.3950617283950617,
+          "proxy_blessed": 0.024691358024691357
+        },
+        "13": {
+          "false_accusation": 0.0,
+          "coverage_correct": 0.75,
+          "proxy_catch": 0.390625,
+          "proxy_blessed": 0.03125
+        },
+        "29": {
+          "false_accusation": 0.01694915254237288,
+          "coverage_correct": 0.7627118644067796,
+          "proxy_catch": 0.3389830508474576,
+          "proxy_blessed": 0.03389830508474576
+        },
+        "37": {
+          "false_accusation": 0.03333333333333333,
+          "coverage_correct": 0.7,
+          "proxy_catch": 0.21666666666666667,
+          "proxy_blessed": 0.03333333333333333
+        },
+        "41": {
+          "false_accusation": 0.0,
+          "coverage_correct": 0.7659574468085106,
+          "proxy_catch": 0.3191489361702128,
+          "proxy_blessed": 0.02127659574468085
+        },
+        "42": {
+          "false_accusation": 0.015151515151515152,
+          "coverage_correct": 0.8181818181818182,
+          "proxy_catch": 0.36363636363636365,
+          "proxy_blessed": 0.045454545454545456
+        }
+      }
+    },
+    "sheva": {
+      "n_cal": 422,
+      "n_eval": 445,
+      "eval_parashot": [
+        "5",
+        "6",
+        "8",
+        "13",
+        "29",
+        "37",
+        "41",
+        "42"
+      ],
+      "candidate": {
+        "say_wrong_below": 0.0077,
+        "say_correct_above": 0.9
+      },
+      "before_eval": {
+        "false_accusation": 0.06741573033707865,
+        "coverage_correct": 0.8,
+        "proxy_catch": 0.7325842696629213,
+        "proxy_blessed": 0.06741573033707865,
+        "fa_ci95_blocks": [
+          0.04566185229303157,
+          0.08948970145799581
+        ]
+      },
+      "after_eval": {
+        "false_accusation": 0.011235955056179775,
+        "coverage_correct": 0.7438202247191011,
+        "proxy_catch": 0.43820224719101125,
+        "proxy_blessed": 0.06741573033707865,
+        "fa_ci95_blocks": [
+          0.0022727272727272726,
+          0.02155288783793848
+        ]
+      },
+      "after_cal": {
+        "false_accusation": 0.02132701421800948,
+        "coverage_correct": 0.7748815165876777,
+        "proxy_catch": 0.5023696682464455,
+        "proxy_blessed": 0.06872037914691943
+      },
+      "after_eval_by_parasha": {
+        "5": {
+          "false_accusation": 0.0,
+          "coverage_correct": 0.7735849056603774,
+          "proxy_catch": 0.41509433962264153,
+          "proxy_blessed": 0.09433962264150944
+        },
+        "6": {
+          "false_accusation": 0.03571428571428571,
+          "coverage_correct": 0.7321428571428571,
+          "proxy_catch": 0.42857142857142855,
+          "proxy_blessed": 0.07142857142857142
+        },
+        "8": {
+          "false_accusation": 0.0,
+          "coverage_correct": 0.7192982456140351,
+          "proxy_catch": 0.47368421052631576,
+          "proxy_blessed": 0.07017543859649122
+        },
+        "13": {
+          "false_accusation": 0.01694915254237288,
+          "coverage_correct": 0.711864406779661,
+          "proxy_catch": 0.3559322033898305,
+          "proxy_blessed": 0.06779661016949153
+        },
+        "29": {
+          "false_accusation": 0.0,
+          "coverage_correct": 0.6833333333333333,
+          "proxy_catch": 0.5,
+          "proxy_blessed": 0.06666666666666667
+        },
+        "37": {
+          "false_accusation": 0.0,
+          "coverage_correct": 0.7678571428571429,
+          "proxy_catch": 0.5178571428571429,
+          "proxy_blessed": 0.03571428571428571
+        },
+        "41": {
+          "false_accusation": 0.018518518518518517,
+          "coverage_correct": 0.8148148148148148,
+          "proxy_catch": 0.2962962962962963,
+          "proxy_blessed": 0.09259259259259259
+        },
+        "42": {
+          "false_accusation": 0.02,
+          "coverage_correct": 0.76,
+          "proxy_catch": 0.52,
+          "proxy_blessed": 0.04
+        }
+      }
+    }
+  },
+  "candidate_sha256": "150e3367549b98583938811ca3daf8e28e869ce2a9dbc25bed519418865f223f"
+}
