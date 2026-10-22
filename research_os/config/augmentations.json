@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "scope": "train-only, Sephardi-Jerusalem accent identification",
+  "policy": "all augmentations inherit root_recording_id; no synthetic examples in held-out final test",
+  "modules": [
+    {
+      "id": "A00",
+      "label": "Pitch shift",
+      "method": "librosa/phase-vocoder or equivalent, +/- semitones",
+      "status": "existing_project_control",
+      "hypothesis": "Known Taamify high-pitch robustness improvement",
+      "fidelity": "interval contour preserved; check octave errors",
+      "comparand": "unaugmented"
+    },
+    {
+      "id": "A01",
+      "label": "Room impulse response",
+      "method": "Convolution with measured/controlled RIR",
+      "status": "candidate",
+      "hypothesis": "microphone/room robustness",
+      "fidelity": "accent pattern, onset and alignment conserved",
+      "comparand": "no RIR"
+    },
+    {
+      "id": "A02",
+      "label": "Ambient noise",
+      "method": "controlled SNR and device noise profiles",
+      "status": "candidate",
+      "hypothesis": "mobile capture robustness",
+      "fidelity": "speech audibility and human label intact",
+      "comparand": "SNR matched controls"
+    },
+    {
+      "id": "A03",
+      "label": "Tempo variation",
+      "method": "time stretch without pitch movement",
+      "status": "candidate",
+      "hypothesis": "robustness to reader speed",
+      "fidelity": "no accent loss or syllable timing reversal",
+      "comparand": "unchanged clips"
+    },
+    {
+      "id": "A04",
+      "label": "Formant perturbation",
+      "method": "vocal tract length perturbation / WORLD where usable",
+      "status": "candidate",
+      "hypothesis": "reduce speaker timbre dependence",
+      "fidelity": "preserve pitch trajectory, consonant identity and vowels",
+      "comparand": "pitch shift baseline"
+    },
+    {
+      "id": "A05",
+      "label": "Channel/codec simulation",
+      "method": "resampling, mobile mic frequency response, compression",
+      "status": "candidate",
+      "hypothesis": "robustness to phone recording",
+      "fidelity": "no clipping, timbral artifact leakage or misalignment",
+      "comparand": "clean recordings"
+    },
+    {
+      "id": "A06",
+      "label": "Voice conversion",
+      "method": "licensed and consented target voice using F0-preserving voice conversion",
+      "status": "requires_permission_and_audit",
+      "hypothesis": "speaker-sounding diversity over pitch shift",
+      "fidelity": "F0, note contour, syllables, duration and accent by human audit",
+      "comparand": "identical training set with pitch shift only"
+    },
+    {
+      "id": "A07",
+      "label": "SpecAugment",
+      "method": "frequency/time masks at spectrogram training",
+      "status": "existing_project_method",
+      "hypothesis": "robust feature learning; may slow short training",
+      "fidelity": "mask not erase discriminative cantillation target",
+      "comparand": "same budget without masks"
+    },
+    {
+      "id": "A08",
+      "label": "Mixup",
+      "method": "composite of different recordings",
+      "status": "exclude_by_default",
+      "hypothesis": "high risk of invalid merged melodies",
+      "fidelity": "not assumed label-preserving",
+      "comparand": "must be separately justified"
+    }
+  ],
+  "canonicalRegistry": "MeiRR17/Taamify:research_os/config/augmentations.json"
+}
