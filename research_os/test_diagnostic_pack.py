@@ -108,6 +108,19 @@ class DiagnosticPackTests(unittest.TestCase):
         self.assertEqual(get_ids(first), get_ids(second))
         self.assertEqual(a['selection_accounting'], b['selection_accounting'])
 
+    def test_benchmark_block_allowlist_limits_phrases_and_is_recorded(self):
+        self.fixture()
+        allowed = [f'1.{HELD_OUT[0]}.1:1', f'1.{HELD_OUT[1]}.1:1']
+        report = build_pack(self.root, self.root / 'results/allow', max_words=1,
+                            per_parasha=1, benchmark_blocks=allowed)
+        benchmark = [json.loads(line) for line in
+                     (self.root / 'results/allow/benchmark_manifest.jsonl').read_text().splitlines()]
+        self.assertEqual(sorted(f"{row['verse']}:{row['block']}" for row in benchmark), sorted(allowed))
+        self.assertEqual(report['benchmark_block_allowlist']['blocks'], 2)
+        default = build_pack(self.root, self.root / 'results/default', max_words=1, per_parasha=1)
+        self.assertIsNone(default['benchmark_block_allowlist'])
+        self.assertEqual(default['benchmark_phrases'], len(HELD_OUT))
+
     def test_output_outside_ignored_results_is_rejected(self):
         self.fixture()
         with self.assertRaisesRegex(ValueError, 'ignored results'):

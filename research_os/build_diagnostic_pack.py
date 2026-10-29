@@ -88,7 +88,10 @@ def stratified_order(items, rng):
                 yield buckets[key].pop()
 
 
-def build_pack(root, output, seed=20261028, max_words=200, per_parasha=5):
+def build_pack(root, output, seed=20261028, max_words=200, per_parasha=5, benchmark_blocks=None):
+    # benchmark_blocks: optional 'book.chapter.verse:block' allowlist, e.g. the
+    # blocks an external model never trained on. None keeps every block eligible.
+    allow = None if benchmark_blocks is None else frozenset(benchmark_blocks)
     root, output = Path(root).resolve(), Path(output).resolve()
     if not output.is_relative_to(root / 'results'):
         raise ValueError('output must stay inside the local ignored results directory')
@@ -178,7 +181,8 @@ def build_pack(root, output, seed=20261028, max_words=200, per_parasha=5):
     for parasha in sorted(HELD_OUT, key=int):
         pool = [rows[0] for rows in blocks.values()
                 if len(rows) >= 2 and str(rows[0]['meta']['parasha']) == parasha
-                and all(r['meta'].get('read_in_sequence') for r in rows)]
+                and all(r['meta'].get('read_in_sequence') for r in rows)
+                and (allow is None or '.'.join(rows[0]['key'][:3]) + ':' + rows[0]['key'][3] in allow)]
         rng.shuffle(pool)
         selected = 0
         for item in pool:
@@ -221,6 +225,9 @@ def build_pack(root, output, seed=20261028, max_words=200, per_parasha=5):
               'seed': seed, 'review_units': len(reviews), 'benchmark_phrases': len(benchmarks),
               'review_parashot': dict(Counter(r['parasha'] for r in reviews)),
               'benchmark_parashot': dict(Counter(r['parasha'] for r in benchmarks)),
+              'benchmark_block_allowlist': None if allow is None else {
+                  'blocks': len(allow),
+                  'sha256': hashlib.sha256('\n'.join(sorted(allow)).encode()).hexdigest()},
               'selection_accounting': accounting, 'rejections': dict(rejected),
               'rejection_counts_are_candidate_attempts_not_distinct_sources': True,
               'source_resolution': resolver.report(),
@@ -277,9 +284,12 @@ def main():
     ap.add_argument('--seed', type=int, default=20261028)
     ap.add_argument('--max-words', type=int, default=200)
     ap.add_argument('--per-parasha', type=int, default=5)
+    ap.add_argument('--benchmark-blocks', type=Path,
+                    help="JSON list of 'book.chapter.verse:block' eligible for benchmark phrases")
     args = ap.parse_args()
+    blocks = json.loads(args.benchmark_blocks.read_text()) if args.benchmark_blocks else None
     start = time.monotonic()
-    result = build_pack(ROOT, args.out, args.seed, args.max_words, args.per_parasha)
+    result = build_pack(ROOT, args.out, args.seed, args.max_words, args.per_parasha, blocks)
     print(json.dumps({**result, 'seconds': round(time.monotonic() - start, 2)}, ensure_ascii=False, indent=2))
 
 
