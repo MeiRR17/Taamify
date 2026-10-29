@@ -1,5 +1,14 @@
 # 🎵 Taamify — Deep Learning Classification of Torah Cantillation Marks
 
+> **מצב עדכני — 27.10.2026:** העבודה הפעילה נמצאת בענף
+> `v3-tradition-finding` ועוסקת בנוסח ספרדי־ירושלמי, עם מודל תורה של
+> 21 מחלקות. המספרים וההשוואות בהמשך README זה הם תיעוד היסטורי.
+> מקור האמת העדכני הוא [PLAN_STAGE_A.md](PLAN_STAGE_A.md), ובפרט שחזור
+> H0 מ־22.10: 85.7% על שמונה פרשות של **קול אחד**, 2.1% התרעות שווא
+> מול יעד 2%, וגילוי טעויות פרוקסי שאינו הוכחת גילוי טעויות תלמיד.
+> המשך העבודה: [בדיקת מודלים קיימים ואבחון](docs/research-os/MODEL_REUSE_REVIEW_HE.md)
+> ו־[העברת העבודה לסוכן](docs/research-os/AGENT_HANDOFF.md).
+
 Taamify classifies **טעמי המקרא** (Torah cantillation marks) from audio: given a
 sung word, the network identifies which of 11 cantillation marks it was sung
 with — and a practice app gives learners real-time feedback, like singing-tutor
