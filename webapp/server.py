@@ -26,6 +26,8 @@ Run:  uvicorn webapp.server:app --port 8077        (from the project root)
 
 import importlib.util
 import io
+import os
+from contextlib import asynccontextmanager
 from functools import lru_cache
 import json
 import time
@@ -39,6 +41,28 @@ import torch.nn as nn
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
+if __package__:
+    from .channel_calibration import channel_status, load_policy, sha256_file
+    from . import reading_contract as reading
+    from . import runtime_bundle as runtime_binding
+else:
+    # Existing Data_Prep tools load this file through spec_from_file_location.
+    _policy_spec = importlib.util.spec_from_file_location(
+        "channel_calibration", Path(__file__).with_name("channel_calibration.py"))
+    _policy_module = importlib.util.module_from_spec(_policy_spec)
+    _policy_spec.loader.exec_module(_policy_module)
+    channel_status = _policy_module.channel_status
+    load_policy = _policy_module.load_policy
+    sha256_file = _policy_module.sha256_file
+    _reading_spec = importlib.util.spec_from_file_location(
+        "reading_contract", Path(__file__).with_name("reading_contract.py"))
+    reading = importlib.util.module_from_spec(_reading_spec)
+    _reading_spec.loader.exec_module(reading)
+    _runtime_spec = importlib.util.spec_from_file_location(
+        "runtime_bundle", Path(__file__).with_name("runtime_bundle.py"))
+    runtime_binding = importlib.util.module_from_spec(_runtime_spec)
+    _runtime_spec.loader.exec_module(runtime_binding)
 
 try:
     import truststore
@@ -93,10 +117,50 @@ FMAX = 8000
 MAX_FRAMES = 87
 PAD_DB = -80.0
 
-app = FastAPI(title="Taamify")
+@asynccontextmanager
+async def lifespan(app):
+    # An explicitly selected candidate must validate before accepting audio.
+    # No environment selection means the existing production rule.
+    get_runtime_bundle.cache_clear()
+    get_runtime_bundle()
+    get_channel_calibration()
+    yield
+
+
+app = FastAPI(title="Taamify", lifespan=lifespan)
 
 # ---------------------------------------------------------------- models --
 _state = {}
+
+
+@lru_cache(maxsize=1)
+def get_runtime_bundle():
+    selected = os.environ.get("TAAMIFY_RUNTIME_BUNDLE")
+    if not selected:
+        return None
+    path = Path(selected)
+    if not path.is_absolute():
+        path = PROJECT_DIR / path
+    policy = os.environ.get("TAAMIFY_CHANNEL_CALIBRATION")
+    policy_path = None
+    if policy:
+        p = Path(policy)
+        if not p.is_absolute():
+            p = PROJECT_DIR / p
+        try:
+            policy_path = p.resolve().relative_to(PROJECT_DIR).as_posix()
+        except ValueError as exc:
+            raise runtime_binding.RuntimeBundleError("selected policy lies outside project") from exc
+    return runtime_binding.load_bundle(path, PROJECT_DIR,
+        expected_options={"channel_calibration": policy_path})
+
+
+@app.get("/api/runtime_config")
+def runtime_config():
+    bundle = get_runtime_bundle()
+    if bundle is None:
+        return {"mode": "unbound", "training_provenance": "not_verified"}
+    return {"mode": "bound", **runtime_binding.public_summary(bundle)}
 
 
 HAFTARA_CKPT = (PROJECT_DIR /
@@ -849,36 +913,29 @@ PHRASES_DIR = PROJECT_DIR / "app_assets" / "collected_phrases"
 PHRASES_LOG = PHRASES_DIR / "phrases_log.jsonl"
 
 
-def log_phrase(audio_bytes, words, taamim, result, voice_id, consent):
-    """Keep a consented phrase recording, with the text it was read against.
+def log_phrase(audio_bytes, words, taamim, result, capture):
+    """Capture expected text and model observations, never performed gold labels.
 
-    This is the growth engine for the corpus, and it is a different shape
-    from log_attempt(): that one keeps only the uncertain single words,
-    because it was built to find Stage B errors. A phrase recording is worth
-    more than that. It arrives already paired with the exact words and
-    ta'amim it was read against, so it needs no manual labelling -- the same
-    CTC alignment that built the whole corpus turns it into training rows
-    (Data_Prep/ingest_collected_phrases.py).
-
-    Every phrase from a learner is therefore a new VOICE, which is the one
-    thing 470 GPU-hours could not produce: the entire corpus is a single
-    reader, and the model scores 15/16 on that reader and 0/2 on another.
-
-    Stored only with explicit consent, only locally, and the voice id is a
-    random handle rather than anything identifying.
+    All consenting attempts are retained, including rejected/uncertain audio.
+    Human annotation and hash-bound approval are required before training.
     """
-    if not consent:
+    if capture is None:
         return None
     PHRASES_DIR.mkdir(parents=True, exist_ok=True)
     clip_id = uuid.uuid4().hex[:12]
-    (PHRASES_DIR / f"{clip_id}.wav").write_bytes(audio_bytes)
-    rec = {"clip_id": clip_id, "timestamp": round(time.time(), 3),
-           "voice_id": voice_id or "anon", "words": words, "taamim": taamim,
+    audio_hash = reading.bytes_sha256(audio_bytes)
+    with (PHRASES_DIR / f"{clip_id}.wav").open("xb") as output:
+        output.write(audio_bytes)
+    rec = {**capture, "clip_id": clip_id, "timestamp": round(time.time(), 3),
+           "audio_sha256": audio_hash, "source_root_id": f"recording:{audio_hash}",
+           "label_source": "expected-from-text", "words": words, "taamim": taamim,
            "aligned": bool(result.get("aligned")),
            "align_score": result.get("align_score"),
            "correct": result.get("correct"), "wrong": result.get("wrong"),
            "unsure": result.get("unsure"),
-           "statuses": [w.get("status") for w in result.get("words", [])]}
+           "statuses": [w.get("status") for w in result.get("words", [])],
+           "input_quality": result.get("input_quality"),
+           "processing": result.get("processing")}
     with open(PHRASES_LOG, "a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     return clip_id
@@ -1052,7 +1109,7 @@ def get_channel(name):
             st = get_model()
             model.eval().to(st["device"])
             _state[key] = {"model": model, "classes": list(ck["class_names"]),
-                           "he": cfg["he"]}
+                           "he": cfg["he"], "checkpoint_path": ck_path}
         except Exception as e:
             print(f"  channel {name} unavailable ({e})")
     return _state[key]
@@ -1082,11 +1139,11 @@ def expected_channel_label(name, pointed_word):
         return {1: "milra", 2: "milel"}.get(r["from_end"])
     L = hebrew_letters(pointed_word)
     if name == "dagesh":
-        b = [c for c in L if c in BEGADKEFAT]
+        b = [(base, marks) for base, marks in reading.letter_clusters(pointed_word)
+             if base in BEGADKEFAT]
         if len(b) != 1:
             return None
-        i = pointed_word.index(b[0])
-        return "dagesh" if DAGESH_MARK in pointed_word[i:i + 3] else "no_dagesh"
+        return "dagesh" if DAGESH_MARK in b[0][1] else "no_dagesh"
     if name == "guttural":
         a = [c for c in L if c in "\u05e2\u05d0"]
         if len(a) != 1:
@@ -1127,6 +1184,46 @@ CHANNEL_WINDOW = {
 }
 
 
+def channel_frontend():
+    return {"sample_rate": SR, "n_mels": N_MELS, "fmax": FMAX,
+            "max_frames": MAX_FRAMES, "pad_db": PAD_DB,
+            "normalization": "per_word_zscore",
+            "alignment_gate_score": ALIGN_GATE_SCORE,
+            "windows": {name: list(window) for name, window in CHANNEL_WINDOW.items()}}
+
+
+def channel_bindings():
+    bindings = {}
+    for name in CHANNELS:
+        channel = get_channel(name)
+        if channel is None:
+            raise RuntimeError(f"selected channel calibration needs model {name}")
+        bindings[name] = {"checkpoint_sha256": sha256_file(channel["checkpoint_path"]),
+                          "class_names": channel["classes"]}
+    return bindings
+
+
+@lru_cache(maxsize=1)
+def get_channel_calibration():
+    selected = os.environ.get("TAAMIFY_CHANNEL_CALIBRATION")
+    if not selected:
+        return None
+    path = Path(selected)
+    if not path.is_absolute():
+        path = PROJECT_DIR / path
+    return load_policy(path, channel_bindings(), channel_frontend(),
+                       get_severity().CHANNEL_MIN_CONFIDENCE)
+
+
+@app.get("/api/channel_config")
+def channel_config():
+    policy = get_channel_calibration()
+    return {"mode": "candidate" if policy else "legacy",
+            "policy_sha256": policy["policy_sha256"] if policy else None,
+            "thresholds": policy["thresholds"] if policy else None,
+            "minimum_confidence": get_severity().CHANNEL_MIN_CONFIDENCE}
+
+
 def run_channels(y, onset, duration, pointed_word, wanted=None):
     """Every extra channel that applies to this word. Silent on the ones that
     do not apply, rather than reporting a meaningless verdict.
@@ -1142,6 +1239,8 @@ def run_channels(y, onset, duration, pointed_word, wanted=None):
             continue
         ch = get_channel(name)
         if ch is None:
+            out[name] = {"expected": expected, "heard": None, "status": "unavailable",
+                         "confidence": None, "he": CHANNELS[name]["he"]}
             continue
         win, lead = CHANNEL_WINDOW[name]
         lo = max(0.0, onset - lead)
@@ -1155,18 +1254,10 @@ def run_channels(y, onset, duration, pointed_word, wanted=None):
             probs = torch.softmax(ch["model"](t), dim=1)[0].cpu().numpy()
         heard = ch["classes"][int(probs.argmax())]
         conf = float(probs.max())
-        # These channels are a raw argmax with no window-geometry tuning or
-        # align-quality gate -- see Data_Prep/severity.py's comment above
-        # CHANNEL_MIN_CONFIDENCE for the measured false-positive rates on
-        # correct audio (10-20%, against the ta'am channel's calibrated 2%).
-        # A minimum-confidence three-state cut is a crude stand-in for real
-        # calibration, but it is what stands between shipping this and
-        # shipping an uncalibrated argmax as a verdict.
         sev = get_severity()
-        if conf < sev.CHANNEL_MIN_CONFIDENCE:
-            status = "unsure"
-        else:
-            status = "ok" if heard == expected else "wrong"
+        policy = get_channel_calibration()
+        status = channel_status(heard, expected, conf, sev.CHANNEL_MIN_CONFIDENCE,
+                                policy["thresholds"][name] if policy else None)
         out[name] = {"expected": expected, "heard": heard,
                      "status": status,
                      "confidence": round(conf, 3), "he": ch["he"]}
@@ -1298,7 +1389,7 @@ def decide(conf, expected=None):
     return "unsure"
 
 
-def phrase_report(results, phrase_severity):
+def phrase_report(results, phrase_severity, calibrated_channels=False):
     """The one line the app actually shows after a phrase: what to do next.
 
     should_repeat already answers the halachic question (does anything here
@@ -1314,8 +1405,8 @@ def phrase_report(results, phrase_severity):
     # alone here undercounted: a phrase with only a wrong channel on an
     # otherwise-correct word reported "read correctly" while that word's own
     # summary said otherwise.
-    wrong = [r for r in results if r["severities"]]
-    unsure = [r for r in results if r["status"] in ("unsure", "unknown")]
+    wrong = [r for r in results if r.get("severities")]
+    unsure = [r for r in results if r["status"] in ("unsure", "unknown", "unsupported")]
     if n and len(unsure) == n:
         return {"headline": "לא הצלחתי לשמוע ברור מספיק — כדאי לנסות שוב",
                 "should_repeat": False}
@@ -1329,6 +1420,14 @@ def phrase_report(results, phrase_severity):
     if wrong:
         return {"headline": f"{len(wrong)} מקום שכדאי לשים לב אליו — "
                             f"לא משנה את המשמעות, אין צורך לחזור",
+                "should_repeat": False}
+    if unsure:
+        return {"headline": "חלק מהמילים לא נבדקו בוודאות — כדאי לנסות שוב",
+                "should_repeat": False}
+    if any(
+            ch.get("status") not in ("ok", "wrong") for r in results
+            for ch in (r.get("channels") or {}).values()):
+        return {"headline": "חלק מבדיקות הדקדוק לא היו חד־משמעיות — כדאי לתרגל שוב",
                 "should_repeat": False}
     return {"headline": "הקטע נקרא נכון", "should_repeat": False}
 
@@ -1517,7 +1616,11 @@ async def check_phrase(audio: UploadFile = File(...),
                        channels: str = Form(""),
                        genre: str = Form("torah"),
                        consent: str = Form(""),
-                       voice_id: str = Form("")):
+                       voice_id: str = Form(""),
+                       session_id: str = Form(""),
+                       consent_version: str = Form(""),
+                       consent_scope: str = Form(""),
+                       tradition: str = Form("")):
     """The learning loop's core call: a recording of one phrase, plus the
     words and ta'amim the text requires, in order. Returns a verdict per
     word.
@@ -1531,29 +1634,53 @@ async def check_phrase(audio: UploadFile = File(...),
     a child "wrong" when the system simply lost the word is the most costly
     error this product can make.
     """
+    started = time.perf_counter()
     wanted = [c.strip() for c in channels.split(",") if c.strip() in CHANNELS] or None
     # words/taamim arrive as JSON arrays. Malformed input is the caller's
     # mistake and belongs in a 400 with a usable message, not a 500 -- the
     # app has to be able to tell "you sent the wrong shape" apart from "the
     # model broke".
     try:
-        parsed_words = json.loads(words)
-        parsed_taamim = json.loads(taamim)
-        if not isinstance(parsed_words, list) or not isinstance(parsed_taamim, list):
-            raise ValueError("expected JSON arrays")
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=f"words and taamim must be JSON arrays of strings ({exc})")
-    word_list = [w for w in parsed_words if w.strip()]
-    taam_list = parsed_taamim
-    if len(word_list) != len(taam_list):
-        return {"error": "words and taamim must be the same length"}
-
-    raw_audio = await audio.read()
-    y = load_wav(raw_audio)
+        word_list, taam_list = reading.phrase_inputs(words, taamim)
+        capture = reading.capture_metadata(consent, voice_id, session_id,
+                                           consent_version, consent_scope, tradition)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if genre != "torah":
+        raise HTTPException(status_code=400, detail="בדיקת משפטים זמינה כעת לתורה בנוסח ספרדי־ירושלמי")
+    raw_audio = await audio.read(reading.MAX_AUDIO_BYTES + 1)
+    if len(raw_audio) > reading.MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="ההקלטה גדולה מדי — הקלט קטע קצר יותר")
+    try:
+        y = load_wav(raw_audio)
+    except Exception:
+        raise HTTPException(status_code=400, detail="לא ניתן לקרוא את קובץ ההקלטה")
     if y is None or len(y) < SR * 0.2:
         return {"error": "ההקלטה קצרה מדי"}
+    if len(y) > SR * reading.MAX_AUDIO_SECONDS:
+        raise HTTPException(status_code=400, detail="הקלט קטע שאורכו עד 45 שניות")
+    rms = float(np.sqrt(np.mean(y.astype(np.float64) ** 2)))
+    quality = {"rms": round(rms, 7), "peak": round(float(np.max(np.abs(y))), 6),
+               "clipped_fraction": round(float(np.mean(np.abs(y) >= 0.999)), 5)}
+
+    def finish_response(result):
+        result["input_quality"] = quality
+        result["processing"] = {"audio_sha256": reading.bytes_sha256(raw_audio),
+            "decoded_sample_rate": SR, "decoded_samples": len(y),
+            "audio_seconds": round(len(y) / SR, 4),
+            "elapsed_seconds": round(time.perf_counter() - started, 4),
+            "frontend_version": "ben13-16k-128mel-87frames-v1",
+            "decision_version": "phrase-coverage-v2"}
+        bundle = get_runtime_bundle()
+        if bundle is not None:
+            result["processing"]["runtime_bundle_sha256"] = bundle["bundle_sha256"]
+        result["saved_clip"] = log_phrase(raw_audio, word_list, taam_list, result, capture)
+        return result
+
+    if rms < 1e-5:
+        quality["reason"] = "silence"
+        return finish_response({"aligned": False, "words": [],
+            "message": "לא נשמע קול בהקלטה — בדוק את המיקרופון ונסה שוב"})
 
     spec_mod = importlib.util.spec_from_file_location(
         "va", PROJECT_DIR / "Data_Prep" / "verse_align.py")
@@ -1569,12 +1696,13 @@ async def check_phrase(audio: UploadFile = File(...),
     try:
         spans, score, _ = va.align_verse(y16, prepared)
         raw_spans = dict(spans) if spans else None
-    except Exception as e:
-        return {"error": f"alignment failed: {e}"}
+    except Exception:
+        return finish_response({"aligned": False, "words": [],
+            "message": "לא הצלחתי לנתח את ההקלטה — אפשר לנסות שוב"})
     if spans is None:
-        return {"aligned": False,
+        return finish_response({"aligned": False,
                 "message": "לא הצלחתי ליישר את ההקלטה לטקסט — נסה להקליט שוב",
-                "words": []}
+                "words": []})
 
     # A phrase-level alignment score below this means the cut is untrustworthy
     # for EVERY word in it, not just a weak one. Measured on real continuous
@@ -1584,10 +1712,10 @@ async def check_phrase(audio: UploadFile = File(...),
     # Stage A's exit bar. Staying silent on a bad cut is cheap; a confident
     # wrong verdict built on one is the error this product cannot afford.
     if score is not None and score < ALIGN_GATE_SCORE:
-        return {"aligned": False, "align_score": round(float(score), 3),
+        return finish_response({"aligned": False, "align_score": round(float(score), 3),
                 "message": "ההקלטה לא הייתה ברורה מספיק לניתוח מדויק — "
                            "נסה שוב, לאט וברור",
-                "words": []}
+                "words": []})
 
     spans = partition_spans(spans, len(y16) / 16000)
     spans = best_shift(y, spans, len(y16) / 16000)
@@ -1679,23 +1807,22 @@ async def check_phrase(audio: UploadFile = File(...),
             c["correct"] += 1 if v["status"] == "ok" else 0
     wrong_n = sum(1 for r in results if r.get("status") == "wrong")
     unsure_n = sum(1 for r in results if r.get("status") in ("unsure", "unknown"))
-    return {"aligned": True,
+    response = {"aligned": True,
             "align_score": round(float(score), 3) if score is not None else None,
             "checked": checked, "correct": correct,
             "wrong": wrong_n, "unsure": unsure_n,
             "channel_summary": ch_summary,
             "severity": get_severity().summarise(results),
-            "report": phrase_report(results, get_severity().summarise(results)),
+            "report": phrase_report(results, get_severity().summarise(results),
+                                    calibrated_channels=get_channel_calibration() is not None),
             "genre": genre,
             "used_context": ctx is not None,
-            "saved_clip": log_phrase(raw_audio, word_list, taam_list,
-                                     {"aligned": True, "align_score": score,
-                                      "correct": correct, "wrong": wrong_n,
-                                      "unsure": unsure_n, "words": results},
-                                     voice_id, consent.lower() in ("1", "true", "yes")),
             "thresholds": get_calibration(),
             "accuracy": round(correct / checked, 3) if checked else None,
             "words": results}
+    if get_channel_calibration() is not None:
+        response["channel_calibration"] = channel_config()
+    return finish_response(response)
 
 
 @app.get("/api/genres")

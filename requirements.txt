@@ -5,6 +5,9 @@ torchvision
 scikit-learn
 numpy
 scipy
+transformers
+huggingface-hub
+safetensors
 
 # Audio
 librosa
