@@ -4,6 +4,16 @@
 **Primary source:** `docs/research-os/MASTER_COMPLETION_PLAN_HE.md`.  
 **Resume prompt:** `docs/research-os/CONTINUE_AGENT_PROMPT_HE.md`.
 
+### Cycle 2026-10-29 / c1
+- local and remote branch SHAs: `codex/channel-calibration-review-20261027` = `687a3f7` (pushed; was local-only); this docs branch `docs/continue-cycle-20261029`, based on `e6124e6`.
+- agent discoveries / verified outputs: [CURRENT_STATE_SNAPSHOT.md](CURRENT_STATE_SNAPSHOT.md), [RESEARCH_FINDINGS_RECONCILIATION.md](RESEARCH_FINDINGS_RECONCILIATION.md), [github-study/PRIOR_ART_DIRECT_T04_HE.md](github-study/PRIOR_ART_DIRECT_T04_HE.md).
+- Tasks moved to verified_complete: **T00**. T04 → `in_progress` (direct prior art done; Technion/Cantillate/TaamimFlow/PocketTorah).
+- New facts: Technion Jerusalem model trained on Ben13 (same reader); 37/40 phrases of the 28.10 benchmark were in its training split → 99.0% vs 89.4% rejected as a comparison. On 160 phrases unseen by both: Technion 91.3% vs ours 84.3%, paired +6.8 [+2.4, +11.4]. `/api/check_phrase` false "wrong" on correct readings 4.0% [2.6, 6.3] on that sample. None of the 4 prior-art repos has a code licence.
+- Tests run and failures: `research_os.test_*` 91/91 OK; JS practice test OK; `verify_dataset` OK; `model_bundle validate` OK. No failures.
+- New blocked decisions: D10 (below).
+- Next task and acceptance: T01 — reconcile A3 with the endpoint the practice screen calls (DoD: same 160-phrase pack through `verify_reading` and `check_phrase`, one A3 definition, CI). Then T06 pilot protocol for Technion encoder as challenger (DoD: preregistered protocol on `ben13_source_independent_20261028_v1`, Technion-train blocks excluded from evaluation).
+- Owner approval requested: D10 only.
+
 ## Meaning of statuses
 
 - `verified_complete`: artifact and exact commit / test evidence were inspected.
@@ -30,11 +40,11 @@
 
 | ID | Status | Grounding / evidence | Exact next action |
 |---|---|---|---|
-| T00 | `in_progress_unconfirmed` | User reports an agent is working; GitHub has no new report for Issue #4 | inspect local + remote branches, untracked report, Astra plan, publish sanitized state reconciliation |
-| T01 | `previously_reported` | `PLAN_STAGE_A.md` and `Data_Prep/stageA_replay.py` in `v3-tradition-finding` | verify same active model, dataset hashes and API replay if needed |
+| T00 | `verified_complete` (2026-10-29) | [CURRENT_STATE_SNAPSHOT.md](CURRENT_STATE_SNAPSHOT.md); local work pushed to `codex/channel-calibration-review-20261027`; no Astra plan found | — |
+| T01 | `previously_reported` — **conflict found** | Stage A A3 2.1%; `check_phrase` gives 4.0% [2.6, 6.3] on 160 clean phrases (T04 §1c) | rerun the same pack through `verify_reading` and `check_phrase`; fix one A3 definition |
 | T02 | `blocked` | Ben13 permissions unresolved in prior audit | request documentary evidence / form rights register; don't assert cleared |
 | T03 | `blocked` | no verified new independent reader and authentic errors in remote evidence | design privacy-aware acquisition + labeling; no outreach without approval |
-| T04 | `not_started_visible` | PR #5 provides brief README-level prior-art review, not full source comparison | deep dive Technion/Cantillate/TaamimFlow code, claims and controls |
+| T04 | `in_progress` — direct prior art `verified_complete` | [PRIOR_ART_DIRECT_T04_HE.md](github-study/PRIOR_ART_DIRECT_T04_HE.md): code/licence read, exact training-overlap join, clean 160-phrase head-to-head | Sefaria/peer-reviewed literature, Technion final report PDF, then T05 |
 | T05 | `not_started_visible` | 116 discovery leads, many unverified; review matrix not received | evaluate by evidence E0–E4 and license; produce 20 deep reviews |
 | T06 | `candidate_review` | five preliminary pilot hypotheses in PR #5 | exact preregistered test plans and accept/reject gates |
 | T07 | `candidate_review` | `TASK1_CHANNEL_CALIBRATION.md`; not served | verify candidate B with full E2E/real errors before approval |
@@ -55,6 +65,7 @@
 - A4 proxy catch **92%** — not genuine learner error sensitivity.
 - Task1 grammar candidate B: combined flagged-correct **13.7% → 2.8%**, proxy-catch falls substantially; *not live*.
 - Existing Stage A did not prove cross-reader or commercial readiness.
+- 2026-10-29, same reader, 160 phrases unseen by both systems: Technion Whisper-small Jerusalem 91.3% vs Taamify API recognition 84.3% (paired +6.8 [+2.4, +11.4]).
 
 ## Decisions log / approval gates
 
@@ -69,6 +80,7 @@
 | D07 | Paid compute, major sweep or external audio processing | **not approved** | expensive work / third-party transfer |
 | D08 | Journal and article claim/novelty after direct prior-art study | pending | submission |
 | D09 | Merge into master or production deployment | **not approved** | publish/deploy |
+| D10 | Use the Technion Jerusalem Whisper weights (Apache-2.0 card, trained on Ben13) as a research challenger/encoder in G3 | pending — research use local only; commercial use waits on D01 | T06/T08 pilot design |
 
 ## First "תמשיך" recommended start
 
