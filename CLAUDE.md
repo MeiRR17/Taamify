@@ -1,5 +1,10 @@
 # Taamify — project instructions
 
+## Agent continuation / פקודת "תמשיך" (documentation and safe work only)
+
+When the user asks to continue Taamify, read `docs/research-os/CONTINUE_AGENT_PROMPT_HE.md`, `MASTER_COMPLETION_PLAN_HE.md` and `CONTINUATION_STATE.md`; follow their evidence-first, non-destructive continuation protocol. This supplements the existing product and measurement constraints below. Before resuming, reconcile local unpushed reports with GitHub Issue #4 and PR #5; don't overwrite another agent's work. A bare "תמשיך" does not authorize prod checkpoint or threshold changes, merging, deployment, payment, public audio transfer, or large training sweeps.
+
+
 Deep learning that identifies **טעמי מקרא** (cantillation marks) from audio,
 for the **Sephardic-Jerusalem tradition only**, aimed at a real product for
 bar-mitzvah learners. Not a research comparison.
