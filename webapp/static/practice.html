@@ -118,6 +118,10 @@ button:disabled{opacity:.4;cursor:default}
 .legend span{display:flex;align-items:center;gap:5px}
 .legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
 .empty{color:var(--ink3);font-size:13.5px;padding:26px 0;text-align:center}
+.capture{font-size:12px;line-height:1.8;color:var(--ink2);margin-top:14px}
+.capture label{display:flex;align-items:flex-start;gap:8px}
+.capture input{margin-top:6px;flex:none}
+.capture button{font-size:11px;padding:3px 8px;margin-top:5px}
 </style>
 </head>
 <body>
@@ -139,6 +143,17 @@ button:disabled{opacity:.4;cursor:default}
 
   <div class="card" id="card">
     <div class="empty">בחר פרשה ועלייה כדי להתחיל</div>
+  </div>
+
+  <div class="capture">
+    <label><input type="checkbox" id="capture-consent">
+      <span>אני מסכים לשמור את הקלטות התרגול במחשב המקומי לצורכי מחקר ולשימוש עתידי
+      באימון, לאחר בדיקה אנושית. נשמרים מזהה קורא אקראי והטקסט המצופה.
+      התרגול זמין גם בלי שמירה. האיסוף מיועד לנוסח ספרדי־ירושלמי.</span></label>
+    <button id="new-reader" type="button">מתרגל עכשיו קורא אחר</button>
+    <span id="capture-status">שמירת הקלטות כבויה</span>
+    <label for="audio-file">או בדוק הקלטה קיימת של הקטע:
+      <input id="audio-file" type="file" accept="audio/wav,audio/x-wav,audio/mpeg,audio/flac"></label>
   </div>
 
   <div class="map" id="mapwrap" hidden>
@@ -167,11 +182,34 @@ button:disabled{opacity:.4;cursor:default}
 <script>
 const $ = id => document.getElementById(id);
 const LS = "taamify_practice_v1";
-let plan = null, flat = [], cur = 0, media = null, chunks = [], progress = {};
+let plan = null, flat = [], cur = 0, media = null, chunks = [], progress = {}, busy = false;
 try { progress = JSON.parse(localStorage.getItem(LS) || "{}"); } catch (e) { progress = {}; }
 
 const save = () => { try { localStorage.setItem(LS, JSON.stringify(progress)); } catch (e) {} };
 const keyOf = p => `${plan.parasha}/${plan.aliya}/${p.ref}/${p.index}`;
+
+function captureFields() {
+  if (!$("capture-consent").checked) return {consent: "false"};
+  let voice = localStorage.getItem("taamify_voice_v2");
+  if (!voice) { voice = "voice_" + crypto.randomUUID(); localStorage.setItem("taamify_voice_v2", voice); }
+  let session = sessionStorage.getItem("taamify_session_v2");
+  if (!session) { session = "session_" + crypto.randomUUID(); sessionStorage.setItem("taamify_session_v2", session); }
+  return {consent: "true", voice_id: voice, session_id: session,
+    consent_version: "taamify-local-research-v1",
+    consent_scope: JSON.stringify(["local_research", "training"]),
+    tradition: "sephardic-jerusalem"};
+}
+
+function lockControls(locked) {
+  for (const id of ["parasha", "aliya", "prev", "next", "listen", "capture-consent", "new-reader", "audio-file"])
+    if ($(id)) $(id).disabled = locked;
+  if (!locked) {
+    if ($("prev")) $("prev").disabled = cur === 0;
+    if ($("next")) $("next").disabled = cur >= flat.length - 1;
+    $("listen").disabled = !flat.length;
+  }
+  for (const b of $("cells").querySelectorAll("button")) b.disabled = locked;
+}
 
 async function boot() {
   const d = await fetch("/api/parashot").then(r => r.json());
@@ -264,6 +302,8 @@ function drawMap() {
 // ── recording ───────────────────────────────────────────────────────────
 async function toggle() {
   if (media && media.state === "recording") { media.stop(); return; }
+  if (busy || !flat.length) return;
+  const task = {phrase: flat[cur], key: keyOf(flat[cur]), capture: captureFields()};
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -283,8 +323,9 @@ async function toggle() {
     stream.getTracks().forEach(t => t.stop());
     const sr = ac.sampleRate; ac.close();
     media = null; $("rec").dataset.on = "0";
-    finish(encodeWav(merge(chunks), sr));
+    finish(encodeWav(merge(chunks), sr), task);
   } };
+  lockControls(true);
   $("rec").dataset.on = "1";
   $("status").textContent = "מקליט…";
   $("hint").textContent = "לחץ שוב לעצירה";
@@ -306,30 +347,39 @@ function encodeWav(s, sr) {
   return new Blob([b], { type: "audio/wav" });
 }
 
-async function finish(blob) {
-  const p = flat[cur];
+async function finish(blob, task) {
+  const p = task.phrase;
+  busy = true;
+  $("rec").disabled = true;
   $("status").textContent = "בודק…";
   $("hint").textContent = "מיישר את ההקלטה לטקסט";
   const fd = new FormData();
   fd.append("audio", blob, "rec.wav");
   fd.append("words", JSON.stringify(p.words.map(w => w.word)));
   fd.append("taamim", JSON.stringify(p.words.map(w => w.taam)));
+  for (const [key, value] of Object.entries(task.capture)) fd.append(key, value);
   let d;
-  try { d = await fetch("/api/check_phrase", { method: "POST", body: fd }).then(r => r.json()); }
-  catch (e) { $("status").textContent = "שגיאת רשת"; return; }
+  try {
+    const response = await fetch("/api/check_phrase", { method: "POST", body: fd });
+    d = await response.json();
+    if (!response.ok) throw new Error(d.detail || "לא ניתן לבדוק את ההקלטה");
+  }
+  catch (e) { $("status").textContent = e.message || "שגיאת רשת"; return; }
+  finally { busy = false; $("rec").disabled = false; lockControls(false); }
+  if (d.saved_clip) $("capture-status").textContent = "ההקלטה נשמרה מקומית וממתינה לבדיקה אנושית";
   if (d.error || d.aligned === false) {
     $("status").textContent = "לא הצלחתי לקרוא את ההקלטה";
     $("hint").textContent = d.message || d.error || "נסה שוב, קצת יותר לאט";
     return;
   }
-  const key = keyOf(p);
+  const key = task.key;
   const st = progress[key] || { attempts: 0 };
   st.attempts++; st.last = d;
   // "mastered" means every word the system could actually judge came back
   // right. A word it could not place does not count against the learner --
   // telling a child "wrong" when the aligner simply lost the word is the
   // most expensive mistake this product can make.
-  st.mastered = d.checked > 0 && d.correct === d.checked;
+  st.mastered = readingMastered(d);
   progress[key] = st; save();
   render();
   showVerdict(d, false);
@@ -340,9 +390,18 @@ async function finish(blob) {
 // a lesser flag, lenient is a note a learner should not read as "wrong".
 const SEV_ICON = { strict: "🔴", moderate: "🟡", lenient: "⚪" };
 
+function readingMastered(d) {
+  const taamOk = d.checked > 0 && d.correct === d.checked &&
+    d.words?.length === d.checked && d.words.every(w => w.status === "ok");
+  return taamOk && d.words.every(w =>
+    Object.values(w.channels || {}).every(c => c.status === "ok"));
+}
+
 function showVerdict(d, quiet) {
   const v = $("verdict"); if (!v) return;
-  const all = d.checked > 0 && d.correct === d.checked;
+  const all = readingMastered(d);
+  const uncertain = d.words.some(w => w.status !== "ok" && w.status !== "wrong" ||
+    Object.values(w.channels || {}).some(c => c.status !== "ok" && c.status !== "wrong"));
   const none = d.checked === 0;
   const unk = d.words.filter(w => w.status === "unknown" || w.status === "unsupported");
   // The server already decides severity per word (taam + every grammar
@@ -355,7 +414,7 @@ function showVerdict(d, quiet) {
   const rep = d.report || null;
   const flagged = d.words.filter(w => (w.severities || []).length);
   const cls = none ? "mixed"
-    : rep ? (rep.should_repeat ? "poor" : flagged.length ? "mixed" : "good")
+    : rep ? (rep.should_repeat ? "poor" : flagged.length || uncertain ? "mixed" : "good")
     : (all ? "good" : flagged.length > 1 ? "poor" : "mixed");
   v.className = "verdict show " + cls;
   let head;
@@ -369,7 +428,7 @@ function showVerdict(d, quiet) {
   }).concat(unk.map(w => `<div>⚪ <b>${w.word}</b> — לא שמעתי ברור, זה לא נחשב טעות</div>`));
   v.innerHTML = head + (lines.length ? `<div class="detail">${lines.join("")}</div>` : "");
   if (!quiet) {
-    $("status").textContent = all ? "נשלט ✓" : none ? "לא ברור" : `${d.correct}/${d.checked}`;
+    $("status").textContent = all ? "נשלט ✓" : none || uncertain ? "לא ברור" : `${d.correct}/${d.checked}`;
     $("hint").textContent = all && cur < flat.length - 1
       ? "אפשר להמשיך לקטע הבא" : "אפשר להקליט שוב";
   }
@@ -389,8 +448,9 @@ function renderChannels(d) {
   const rows = [];
   // the ta'am verdict itself, in the same row as the grammar channels
   if (d.checked) {
-    const taamOk = d.correct === d.checked;
-    rows.push({ name: "טעם", cls: taamOk ? "ok" : "bad",
+    const taamWrong = d.words.some(w => w.status === "wrong");
+    const taamOk = d.correct === d.words.length;
+    rows.push({ name: "טעם", cls: taamWrong ? "bad" : taamOk ? "ok" : "none",
                n: `${d.correct}/${d.checked}` });
   }
   for (const key of Object.keys(CH_LABELS)) {
@@ -399,8 +459,15 @@ function renderChannels(d) {
       rows.push({ name: CH_LABELS[key], cls: "none", n: "לא רלוונטי בקטע זה" });
       continue;
     }
-    rows.push({ name: CH_LABELS[key], cls: c.correct === c.checked ? "ok" : "bad",
-               n: `${c.correct}/${c.checked}` });
+    {
+      const statuses = d.words.flatMap(w => w.channels?.[key] ? [w.channels[key].status] : []);
+      const wrong = statuses.filter(s => s === "wrong").length;
+      const unsure = statuses.filter(s => s === "unsure").length;
+      const missing = statuses.filter(s => s === "unavailable").length;
+      rows.push({ name: CH_LABELS[key], cls: wrong ? "bad" : unsure || missing ? "none" : "ok",
+                  n: `${c.correct} תקין · ${unsure} לא בטוח · ${wrong} לתרגול` +
+                    (missing ? ` · ${missing} לא נבדק` : "") });
+    }
   }
   box.innerHTML = rows.map(r =>
     `<span class="ch ${r.cls}"><i class="dot"></i><b>${r.name}</b> ${r.n}</span>`
@@ -408,6 +475,23 @@ function renderChannels(d) {
 }
 
 $("rec").addEventListener("click", toggle);
+$("audio-file").addEventListener("change", () => {
+  const file = $("audio-file").files[0];
+  if (!file || busy || media || !flat.length) return;
+  const task = {phrase: flat[cur], key: keyOf(flat[cur]), capture: captureFields()};
+  lockControls(true);
+  finish(file, task);
+  $("audio-file").value = "";
+});
+$("capture-consent").addEventListener("change", () => {
+  $("capture-status").textContent = $("capture-consent").checked
+    ? "שמירה מקומית מופעלת בהסכמה" : "שמירת הקלטות כבויה";
+});
+$("new-reader").addEventListener("click", () => {
+  localStorage.removeItem("taamify_voice_v2"); sessionStorage.removeItem("taamify_session_v2");
+  $("capture-consent").checked = false;
+  $("capture-status").textContent = "קורא חדש — שמירה כבויה עד לאישורו";
+});
 $("listen").addEventListener("click", async () => {
   const p = flat[cur];
   const first = p.words.find(w => w.taam);
